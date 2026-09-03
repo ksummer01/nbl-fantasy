@@ -1,0 +1,1540 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hoop Ladder — NBL Fantasy Basketball</title>
+<meta name="description" content="Season-long total-points fantasy basketball for the Australian NBL. Draft a squad from the ten NBL clubs, sign free agents, trade, and climb the ladder on total fantasy points across the whole season.">
+<meta name="theme-color" content="#101319">
+<meta property="og:title" content="Hoop Ladder — NBL Fantasy Basketball">
+<meta property="og:description" content="Season-long total-points fantasy basketball for the Australian NBL.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%23F5A524'/%3E%3Cg stroke='%231A1305' stroke-width='1.8' fill='none' opacity='.6'%3E%3Ccircle cx='16' cy='16' r='15'/%3E%3Cpath d='M1 16h30M16 1v30'/%3E%3Cellipse cx='16' cy='16' rx='6.5' ry='15'/%3E%3Cellipse cx='16' cy='16' rx='15' ry='6.5'/%3E%3C/g%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<!-- ============================================================
+     STEP 1 OF SETUP: paste your Firebase config between the braces.
+     Leave it exactly as it is and the site still runs, but each
+     person's league will live only in their own browser.
+     Instructions: see README.md
+     ============================================================ -->
+<script>
+window.FIREBASE_CONFIG = {
+  // apiKey: "...",
+  // authDomain: "your-project.firebaseapp.com",
+  // projectId: "your-project",
+  // storageBucket: "your-project.firebasestorage.app",
+  // messagingSenderId: "...",
+  // appId: "..."
+};
+</script>
+
+<!-- Loads Firebase only when a config is present. Never blocks the page. -->
+<script type="module">
+window.__fbReady = (async () => {
+  const cfg = window.FIREBASE_CONFIG || {};
+  if (!cfg.projectId || !cfg.apiKey) return null;
+  const V = "12.18.0";
+  const [{ initializeApp }, fs, au] = await Promise.all([
+    import("https://www.gstatic.com/firebasejs/" + V + "/firebase-app.js"),
+    import("https://www.gstatic.com/firebasejs/" + V + "/firebase-firestore.js"),
+    import("https://www.gstatic.com/firebasejs/" + V + "/firebase-auth.js")
+  ]);
+  const app = initializeApp(cfg);
+  const db = fs.getFirestore(app);
+  try { await au.signInAnonymously(au.getAuth(app)); }
+  catch (e) { console.warn("Anonymous sign-in unavailable:", e && e.code); }
+  return { fs, db };
+})().catch(e => { console.error("Firebase failed to start:", e); return null; });
+</script>
+<style>
+
+:root{
+  --ground:#F2F4F8; --surface:#FFFFFF; --raised:#FFFFFF; --sunken:#E9ECF2;
+  --line:#D8DDE7; --line-soft:#E8ECF3;
+  --ink:#161A22; --ink-2:#39404E; --muted:#6E7787; --faint:#9AA3B2;
+  --accent:#C97A06; --accent-ink:#FFFFFF; --accent-soft:#FDF1DC; --accent-line:#EFCF95;
+  --win:#1E7F4E; --loss:#C0392B; --live:#D2382B; --info:#2563EB;
+  --chip:#EEF1F6;
+  --shadow:0 1px 2px rgba(18,24,38,.06), 0 8px 24px -12px rgba(18,24,38,.18);
+  --r:10px; --r-s:6px;
+  --f-disp:"Barlow Condensed", "Arial Narrow", Impact, sans-serif;
+  --f-body:"Barlow", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --f-mono:"IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#101319; --surface:#171B23; --raised:#1E232D; --sunken:#0C0F14;
+    --line:#2B323F; --line-soft:#222833;
+    --ink:#EDF0F6; --ink-2:#C2C9D6; --muted:#8D97A8; --faint:#697385;
+    --accent:#F5A524; --accent-ink:#1A1305; --accent-soft:#2A2213; --accent-line:#4A3A16;
+    --win:#3FB27F; --loss:#E0574A; --live:#FF5A47; --info:#5B9BFF;
+    --chip:#232935;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 32px -16px rgba(0,0,0,.7);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#101319; --surface:#171B23; --raised:#1E232D; --sunken:#0C0F14;
+  --line:#2B323F; --line-soft:#222833;
+  --ink:#EDF0F6; --ink-2:#C2C9D6; --muted:#8D97A8; --faint:#697385;
+  --accent:#F5A524; --accent-ink:#1A1305; --accent-soft:#2A2213; --accent-line:#4A3A16;
+  --win:#3FB27F; --loss:#E0574A; --live:#FF5A47; --info:#5B9BFF;
+  --chip:#232935;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 32px -16px rgba(0,0,0,.7);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+h1,h2,h3,h4{margin:0;font-family:var(--f-disp);font-weight:700;letter-spacing:.005em;text-wrap:balance;line-height:1.1}
+a{color:var(--info)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-weight:500}
+
+/* ---------- shell ---------- */
+#app{min-height:100vh;display:flex;flex-direction:column}
+.shell{display:grid;grid-template-columns:212px 1fr;min-height:100vh}
+.rail{background:var(--surface);border-right:1px solid var(--line);display:flex;flex-direction:column;position:sticky;top:0;height:100vh}
+.brand{padding:16px 16px 12px;border-bottom:1px solid var(--line-soft);display:flex;align-items:center;gap:9px}
+.ball{width:24px;height:24px;border-radius:50%;background:var(--accent);position:relative;flex:0 0 auto}
+.ball::before,.ball::after{content:"";position:absolute;inset:0;border-radius:50%;border:1.5px solid var(--accent-ink);opacity:.55}
+.ball::before{border-left:none;border-right:none;transform:scaleX(.42)}
+.ball::after{border-top:none;border-bottom:none;transform:scaleY(.42)}
+.brand h1{font-size:19px;letter-spacing:.02em;text-transform:uppercase}
+.brand small{display:block;font-family:var(--f-body);font-size:10px;font-weight:600;letter-spacing:.13em;color:var(--muted);text-transform:uppercase;margin-top:1px}
+.nav{padding:8px;display:flex;flex-direction:column;gap:1px;overflow-y:auto;flex:1}
+.nav button{display:flex;align-items:center;gap:9px;width:100%;text-align:left;background:none;border:0;padding:8px 10px;border-radius:var(--r-s);color:var(--ink-2);font-weight:500;cursor:pointer}
+.nav button:hover{background:var(--chip);color:var(--ink)}
+.nav button[aria-current="page"]{background:var(--accent-soft);color:var(--ink);font-weight:600;box-shadow:inset 2px 0 0 var(--accent)}
+.nav .badge{margin-left:auto;background:var(--accent);color:var(--accent-ink);font-size:10px;font-weight:700;padding:1px 6px;border-radius:99px;font-family:var(--f-mono)}
+.nav .sect{font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);padding:14px 10px 5px}
+.railfoot{padding:10px;border-top:1px solid var(--line-soft);display:flex;gap:6px;align-items:center}
+.main{min-width:0;display:flex;flex-direction:column}
+
+.topbar{position:sticky;top:0;z-index:20;background:color-mix(in srgb, var(--ground) 88%, transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);padding:10px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.topbar .lg{font-family:var(--f-disp);font-size:20px;text-transform:uppercase;letter-spacing:.02em}
+.topbar .sep{width:1px;height:20px;background:var(--line)}
+.rnd{display:flex;align-items:center;gap:6px}
+.rnd b{font-family:var(--f-mono);font-weight:600;font-size:13px}
+.spacer{flex:1}
+.page{padding:22px;max-width:1280px;width:100%}
+.pagehead{margin-bottom:16px}
+.pagehead h2{font-size:27px;text-transform:uppercase;letter-spacing:.02em}
+.pagehead p{margin:3px 0 0;color:var(--muted);font-size:14px;max-width:66ch}
+
+/* ---------- bits ---------- */
+.eyebrow{font-size:10px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;color:var(--faint)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
+.card>.ch{padding:12px 14px;border-bottom:1px solid var(--line-soft);display:flex;align-items:center;gap:10px}
+.card>.ch h3{font-size:16px;text-transform:uppercase;letter-spacing:.03em}
+.card>.cb{padding:14px}
+.grid{display:grid;gap:14px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.btn{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-s);padding:7px 13px;font-weight:600;font-size:14px;cursor:pointer;white-space:nowrap}
+.btn:hover:not(:disabled){border-color:var(--muted)}
+.btn:disabled{opacity:.42;cursor:not-allowed}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.pri:hover:not(:disabled){filter:brightness(1.07)}
+.btn.dan{color:var(--loss);border-color:color-mix(in srgb,var(--loss) 40%, var(--line))}
+.btn.sm{padding:4px 9px;font-size:13px}
+.btn.gh{background:none;border-color:transparent}
+.btn.gh:hover{background:var(--chip)}
+.inp,select.inp{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-s);padding:7px 10px;width:100%}
+label.fl{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:4px;letter-spacing:.02em}
+.field{margin-bottom:12px}
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:99px;background:var(--chip);color:var(--ink-2)}
+.pill.live{background:color-mix(in srgb,var(--live) 16%, transparent);color:var(--live)}
+.pill.win{background:color-mix(in srgb,var(--win) 16%, transparent);color:var(--win)}
+.pill.loss{background:color-mix(in srgb,var(--loss) 16%, transparent);color:var(--loss)}
+.pill.acc{background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent-line)}
+.dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex:0 0 auto}
+.blink{animation:bl 1.6s ease-in-out infinite}
+@keyframes bl{0%,100%{opacity:1}50%{opacity:.28}}
+@media (prefers-reduced-motion:reduce){.blink{animation:none}*{transition:none!important}}
+.note{background:var(--accent-soft);border:1px solid var(--accent-line);border-radius:var(--r-s);padding:10px 12px;font-size:13.5px;color:var(--ink-2)}
+.empty{padding:34px 20px;text-align:center;color:var(--muted)}
+.empty b{display:block;font-family:var(--f-disp);font-size:19px;color:var(--ink);text-transform:uppercase;margin-bottom:4px}
+
+/* ---------- tables ---------- */
+.tw{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th{font-size:10px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--faint);text-align:right;padding:8px 8px;border-bottom:1px solid var(--line);white-space:nowrap;position:sticky;top:0;background:var(--surface);z-index:1}
+th.l,td.l{text-align:left}
+td{padding:7px 8px;border-bottom:1px solid var(--line-soft);text-align:right;white-space:nowrap}
+tbody tr:hover{background:var(--chip)}
+td.num,th.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.stripe{display:inline-block;width:3px;height:22px;border-radius:2px;vertical-align:-6px;margin-right:8px}
+.pname{font-weight:600}
+.pmeta{font-size:11.5px;color:var(--muted);font-weight:500;letter-spacing:.03em}
+.pos{display:inline-block;min-width:19px;text-align:center;font-family:var(--f-mono);font-size:11px;font-weight:600;padding:1px 4px;border-radius:4px;background:var(--chip);color:var(--ink-2)}
+.pos.unk{color:var(--faint)}
+.big{font-family:var(--f-mono);font-size:22px;font-weight:600;font-variant-numeric:tabular-nums}
+
+/* ---------- landing ---------- */
+.land{max-width:1000px;margin:0 auto;padding:34px 22px 60px}
+.hero{display:grid;grid-template-columns:1.05fr .95fr;gap:30px;align-items:center;margin-bottom:30px}
+.hero h2{font-size:clamp(38px,6vw,62px);text-transform:uppercase;letter-spacing:.005em;line-height:.94}
+.hero h2 em{font-style:normal;color:var(--accent)}
+.hero p{color:var(--ink-2);font-size:16px;max-width:52ch;margin:14px 0 0}
+.scorecard{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden}
+.scorecard .sc-h{padding:8px 13px;background:var(--sunken);border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;font-size:11px;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:var(--muted)}
+.sc-row{display:flex;align-items:center;gap:10px;padding:9px 13px;border-bottom:1px solid var(--line-soft)}
+.sc-row:last-child{border-bottom:0}
+.sc-row .nm{flex:1;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.opt{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:9px}
+.opt h3{font-size:18px;text-transform:uppercase;letter-spacing:.03em}
+.opt p{margin:0;color:var(--muted);font-size:13.5px;flex:1}
+
+/* ---------- lineup ---------- */
+.lineup{display:grid;gap:6px}
+.slot{display:grid;grid-template-columns:46px 1fr auto;gap:10px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-s);padding:8px 10px}
+.slot.bench{background:var(--sunken)}
+.slot.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
+.slot .lbl{font-family:var(--f-disp);font-size:15px;font-weight:700;letter-spacing:.06em;color:var(--muted);text-transform:uppercase}
+.slot.starter .lbl{color:var(--accent)}
+.slot .who{min-width:0}
+.slot .empt{color:var(--faint);font-style:italic;font-size:13.5px}
+
+/* ---------- draft ---------- */
+.draftgrid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:14px;align-items:start}
+.draftgrid>*{min-width:0}
+.clock{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.clock.you{border-color:var(--accent);background:var(--accent-soft)}
+.clock .t{font-family:var(--f-mono);font-size:34px;font-weight:600;letter-spacing:-.02em}
+.board{display:flex;gap:5px;overflow-x:auto;padding-bottom:6px}
+.bcol{min-width:112px;flex:0 0 112px}
+.bcol .bh{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding:5px 6px;background:var(--sunken);border-radius:var(--r-s) var(--r-s) 0 0;border:1px solid var(--line);border-bottom:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bcell{border:1px solid var(--line);border-top:0;padding:5px 6px;min-height:40px;font-size:11.5px;background:var(--surface)}
+.bcell .pk{font-family:var(--f-mono);font-size:9.5px;color:var(--faint)}
+.bcell.now{background:var(--accent-soft);border-color:var(--accent)}
+
+/* ---------- matchup ---------- */
+.mu{display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:center;padding:14px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
+.mu .side{min-width:0}
+.mu .side.r{text-align:right}
+.mu .tn{font-family:var(--f-disp);font-size:19px;text-transform:uppercase;letter-spacing:.02em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mu .sc{font-family:var(--f-mono);font-size:30px;font-weight:600;font-variant-numeric:tabular-nums}
+.mu .vs{font-family:var(--f-disp);color:var(--faint);font-size:13px;letter-spacing:.1em}
+.mu.won .sc{color:var(--win)}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:14px;overflow-x:auto}
+.tabs button{background:none;border:0;border-bottom:2px solid transparent;padding:8px 12px;font-weight:600;color:var(--muted);cursor:pointer;white-space:nowrap}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+
+/* ---------- modal / toast ---------- */
+.veil{position:fixed;inset:0;background:rgba(8,10,15,.55);display:flex;align-items:center;justify-content:center;padding:18px;z-index:100}
+.modal{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);width:100%;max-width:520px;max-height:88vh;overflow:auto}
+.modal.wide{max-width:840px}
+.modal .mh{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.modal .mh h3{font-size:18px;text-transform:uppercase;letter-spacing:.03em;flex:1}
+.modal .mb{padding:16px}
+.modal .mf{padding:12px 16px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end;background:var(--sunken)}
+#toasts{position:fixed;right:16px;bottom:16px;z-index:200;display:flex;flex-direction:column;gap:8px;max-width:340px}
+.toast{background:var(--raised);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:var(--r-s);padding:10px 13px;box-shadow:var(--shadow);font-size:13.5px}
+.toast.bad{border-left-color:var(--loss)}
+.toast.good{border-left-color:var(--win)}
+
+.tabbar{display:none}
+@media (max-width:900px){
+  .g2{grid-template-columns:1fr}
+  .mu{grid-template-columns:1fr auto 1fr;gap:8px;padding:12px}
+  .mu .tn{white-space:normal;font-size:16px}
+  .mu .sc{font-size:24px}
+  .topbar .lg{font-size:17px}
+  .shell{grid-template-columns:1fr}
+  .rail{display:none}
+  .hero{grid-template-columns:1fr}
+  .draftgrid{grid-template-columns:1fr}
+  .page{padding:16px 14px 78px}
+  .topbar{padding:9px 14px}
+  .land{padding:22px 14px 60px}
+  .tabbar{display:flex;position:fixed;bottom:0;left:0;right:0;z-index:50;background:var(--surface);border-top:1px solid var(--line);padding:5px 4px calc(5px + env(safe-area-inset-bottom));justify-content:space-around}
+  .tabbar button{background:none;border:0;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10px;font-weight:600;color:var(--muted);padding:4px 6px;cursor:pointer;letter-spacing:.03em}
+  .tabbar button[aria-current="page"]{color:var(--accent)}
+  .tabbar .ic{font-size:16px;line-height:1}
+}
+/* ---------- leaderboard + squad (total-points build) ---------- */
+.you{background:var(--accent-soft)}
+.rankcell{font-family:var(--f-mono);font-weight:600;color:var(--muted)}
+.rankcell b{color:var(--accent)}
+.bars{display:flex;align-items:flex-end;gap:2px;height:26px}
+.bars i{display:block;width:6px;background:var(--accent);border-radius:1px;opacity:.75}
+.bars i.zero{background:var(--line);height:2px!important}
+.hero-total{display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:center}
+.hero-total .n{font-family:var(--f-mono);font-size:clamp(38px,7vw,62px);font-weight:600;line-height:1;letter-spacing:-.02em}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.kpi{background:var(--surface);padding:11px 13px}
+.kpi .k{font-size:10px;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:var(--faint)}
+.kpi .v{font-family:var(--f-mono);font-size:21px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:2px}
+.kpi .s{font-size:12px;color:var(--muted)}
+.setupbar{background:var(--accent-soft);border-bottom:1px solid var(--accent-line);padding:8px 22px;font-size:13px;color:var(--ink-2);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+@media (max-width:900px){ .hero-total{grid-template-columns:1fr;gap:10px} .setupbar{padding:8px 14px} }
+</style>
+</head>
+<body>
+<div id="app"><div class="empty" style="padding:80px"><b>Loading</b>Setting up the league…</div></div>
+<div id="toasts"></div>
+<script>
+"use strict";
+/* ============================================================
+   NBL CLUB + PLAYER DATA
+   Sourced Sept 2026 from official NBL club roster pages and
+   nbl.com.au. posOk:false marks a player whose listed position
+   could not be confirmed — they are UTIL-eligible only.
+   ============================================================ */
+const CLUBS = [
+  {id:"ADL", name:"Adelaide 36ers",             abbr:"36ers",     color:"#1064C8"},
+  {id:"BNE", name:"Brisbane Bullets",           abbr:"Bullets",   color:"#C8102E"},
+  {id:"CNS", name:"Cairns Taipans",             abbr:"Taipans",   color:"#F26522"},
+  {id:"ILL", name:"Illawarra Hawks",            abbr:"Hawks",     color:"#E8394A"},
+  {id:"MEL", name:"Melbourne United",           abbr:"United",    color:"#3B5F96"},
+  {id:"NZB", name:"New Zealand Breakers",       abbr:"Breakers",  color:"#6A7C8C"},
+  {id:"PER", name:"Perth Wildcats",             abbr:"Wildcats",  color:"#8E0F1C"},
+  {id:"SEM", name:"S.E. Melbourne Phoenix",     abbr:"Phoenix",   color:"#1FA35C"},
+  {id:"SYD", name:"Sydney Kings",               abbr:"Kings",     color:"#7C3AED"},
+  {id:"TAS", name:"Tasmania JackJumpers",       abbr:"JackJumpers",color:"#00A3A8"}
+];
+const CLUB = Object.fromEntries(CLUBS.map(c=>[c.id,c]));
+
+/* [name, jersey, pos, club]  pos: G|F|C|"?" */
+const RAW = [
+["Bryce Cotton","11","G","ADL"],["Isaac Humphries","8","C","ADL"],["Zylan Cheatham","45","F","ADL"],
+["Nick Rakocevic","31","F","ADL"],["Flynn Cameron","1","G","ADL"],["Isaac White","2","G","ADL"],
+["John Jenkins","12","G","ADL"],["Jacob Rigoni","25","F","ADL"],["Bul Kuol","42","G","ADL"],
+["Deonte Williams","23","G","ADL"],["Matt Kenyon","0","G","ADL"],["Keanu Rasmussen","22","G","ADL"],
+["Harvey White","43","G","ADL"],["Ben Griscti","14","C","ADL"],
+
+["Tyrell Harrison","24","C","BNE"],["Nate Hinton","4","G","BNE"],["Jaylin Williams","2","F","BNE"],
+["Arnas Velicka","119","G","BNE"],["Taine Murray","0","G","BNE"],["Mitch Norton","8","G","BNE"],
+["Lat Mayen","11","F","BNE"],["Sam McDaniel","26","G","BNE"],["Jacob Holt","15","F","BNE"],
+["Max Mackinnon","3","G","BNE"],["Joshua Duach","5","G","BNE"],["Archie Woodhill","6","F","BNE"],
+["Billy McRae","10","G","BNE"],["Rio Bruton","13","G","BNE"],["Harry Rouhliadeff","14","F","BNE"],
+
+["Jack McVeigh","9","F","CNS"],["Keanu Pinder","25","F","CNS"],["Jonah Bolden","20","C","CNS"],
+["Malique Lewis","2","C","CNS"],["Reyne Smith","21","G","CNS"],["Jaylon Brown","3","G","CNS"],
+["Jaylin Galloway","1","G","CNS"],["Kyrin Galloway","14","F","CNS"],["Shaun Bruce","7","G","CNS"],
+["Sunday Dech","44","G","CNS"],["Lloyd McVeigh","11","G","CNS"],["Walter Brown","22","F","CNS"],
+["Luke Paul","10","G","CNS"],["Brody Nunn","5","G","CNS"],["Luca Yates","19","F","CNS"],
+
+["Tyler Harvey","1","G","ILL"],["Sam Froling","13","C","ILL"],["Darius Days","7","C","ILL"],
+["Kelan Martin","30","F","ILL"],["Milton Doyle","35","G","ILL"],["Lamar Patterson","","F","ILL"],
+["Todd Blanchfield","21","G","ILL"],["Kyle Adnam","5","G","ILL"],["Mason Peatling","22","F","ILL"],
+["Daniel Grida","11","F","ILL"],["Johny Narkle","16","F","ILL"],["Wani Swaka Lo Buluk","9","G","ILL"],
+["William Hickey","6","G","ILL"],["Brodie McGregor","10","G","ILL"],["Amarco Doyle","20","F","ILL"],
+["Fletcher MacDonald","25","F","ILL"],
+
+["Cole Anthony","3","G","MEL"],["Joe Ingles","7","F","MEL"],["Luke Travers","23","F","MEL"],
+["Josh Oduro","2","F","MEL"],["Sam Waardenburg","21","F","MEL"],["Chris Goulding","43","G","MEL"],
+["Shea Ili","51","G","MEL"],["Fabijan Krslovic","18","C","MEL"],["Kyle Bowen","15","F","MEL"],
+["Malith Machar","9","G","MEL"],["Christian D'Angelo","11","G","MEL"],["Tom Wilson","12","G","MEL"],
+["Harry Neilson","16","C","MEL"],["Jensen Bradtke","50","C","MEL"],["Sean Macdonald","13","G","MEL"],
+
+["Parker Jackson-Cartwright","6","G","NZB"],["Sam Mennenga","3","F","NZB"],["Dejan Vasiljevic","34","G","NZB"],
+["Kouat Noi","12","F","NZB"],["Josiah-Jordan James","30","F","NZB"],["Charles Bediako","8","G","NZB"],
+["Izayah Le'Afa","4","G","NZB"],["Reuben Te Rangi","7","F","NZB"],["Carlin Davison","","F","NZB"],
+["Preston Le Gassick","1","G","NZB"],["Kazlo Evans Jr","5","G","NZB"],["Anzac Rissetto","13","F","NZB"],
+["Tukaha Cooper","","G","NZB"],["Aubrey Chunga","","G","NZB"],["Kael Robinson","","F","NZB"],
+
+["Jo Lual-Acuil Jr","0","F","PER"],["Elijah Pepper","40","G","PER"],["Dylan Windler","31","G","PER"],
+["Kristian Doolittle","5","F","PER"],["Jimmy Whitt","33","G","PER"],["Anthony Dell'Orso","2","G","PER"],
+["Jesse Wagstaff","24","F","PER"],["Angus Brandt","26","F","PER"],["Jaron Rillie","9","G","PER"],
+["Cameron Huefner","25","F","PER"],["Tana Kopa","8","G","PER"],["Marley Sam","13","G","PER"],
+["Alex Higgins-Titsha","27","F","PER"],["David Okwera","35","F","PER"],["Thomas Gerovich","22","F","PER"],
+
+["Nathan Sobey","20","G","SEM"],["Skylar Mays","9","G","SEM"],["D'Shawn Schwartz","99","F","SEM"],
+["Jordan Hunter","12","C","SEM"],["Angus Glover","51","G","SEM"],["Dash Daniels","4","G","SEM"],
+["Tanner Krebs","13","G","SEM"],["Ellis Biggar","8","C","SEM"],["Yannis Morin","50","F","SEM"],
+["Akech Aliir","7","F","SEM"],["Patrick Ryan","2","F","SEM"],["Daniel Foster","11","G","SEM"],
+["Hunter Goodrick","10","F","SEM"],
+
+["Kendric Davis","1","G","SYD"],["Xavier Cooks","10","F","SYD"],["Torrey Craig","2","F","SYD"],
+["Matthew Dellavedova","8","G","SYD"],["Andrew Carr","11","F","SYD"],["Keli Leaupepe","34","F","SYD"],
+["Makuach Maluach","15","G","SYD"],["Jason Spurgin","14","F","SYD"],["Jayden Stone","7","G","SYD"],
+["Harry Wessels","9","C","SYD"],["Tyler Robertson","3","G","SYD"],["Lachlan Bofinger","20","?","SYD"],
+["Will Johnston","4","?","SYD"],["Bailey Hanson","","?","SYD"],
+
+["Taran Armstrong","1","G","TAS"],["Bryce Hamilton","19","F","TAS"],["Will Magnay","22","C","TAS"],
+["Josh Bannan","33","F","TAS"],["Majok Deng","5","F","TAS"],["Dakota Mathias","31","G","TAS"],
+["Anthony Drmic","3","G","TAS"],["David Johnson","7","G","TAS"],["Nick Marshall","11","G","TAS"],
+["Ben Ayre","10","G","TAS"],["Ryley Haywood","8","G","TAS"],["Nicholas Stoddart","9","G","TAS"],
+["Jed Richardson","4","F","TAS"],["Ben Gold","12","F","TAS"]
+];
+
+const slug = s => s.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
+const PLAYERS = RAW.map((r,i)=>({
+  id: r[3].toLowerCase()+"-"+slug(r[0]),
+  name: r[0], jersey: r[1], pos: r[2]==="?"?"U":r[2], posOk: r[2]!=="?",
+  club: r[3], rank: i
+}));
+const P = Object.fromEntries(PLAYERS.map(p=>[p.id,p]));
+
+/* Slot eligibility. C can also fill an F slot (bigs), because the NBL
+   lists only G/F/C and centres are scarce. Unconfirmed positions are UTIL only. */
+const ELIG = { G:["G","UTIL"], F:["F","UTIL"], C:["C","F","UTIL"], U:["UTIL"] };
+const canFill = (p, slot) => slot==="BE" || ELIG[p.pos].includes(slot);
+
+
+/* ============================================================
+   LEAGUE DEFAULTS — season-long total points, no matchups.
+   Every player on your squad scores every round.
+   ============================================================ */
+const STAT_KEYS = ["min","pts","reb","ast","stl","blk","to","fgm","fga","ftm","fta","tpm"];
+const STAT_LABEL = {min:"MIN",pts:"PTS",reb:"REB",ast:"AST",stl:"STL",blk:"BLK",to:"TO",fgm:"FGM",fga:"FGA",ftm:"FTM",fta:"FTA",tpm:"3PM"};
+const DEFAULT_SCORING = {pts:1, reb:1, ast:2, stl:4, blk:4, to:-2, fgm:2, fga:-1, ftm:1, fta:-1, tpm:1};
+const SCORE_ORDER = ["pts","reb","ast","stl","blk","to","fgm","fga","ftm","fta","tpm"];
+const DEFAULT_ROSTER_SIZE = 10;
+const TOTAL_ROUNDS = 21;          /* NBL27 regular season: 21 rounds, 33 games per club */
+const SEASON = "NBL27";
+
+const fpts = (line, scoring) => {
+  if(!line) return 0;
+  let t = 0;
+  for(const k of SCORE_ORDER) t += (Number(line[k])||0) * (Number(scoring[k])||0);
+  return Math.round(t*10)/10;
+};
+const r1 = n => Math.round(n*10)/10;
+const uid = (n=8) => {
+  const a = "abcdefghijklmnopqrstuvwxyz0123456789"; let s="";
+  const buf = new Uint32Array(n);
+  if(typeof crypto!=="undefined" && crypto.getRandomValues) crypto.getRandomValues(buf);
+  for(let i=0;i<n;i++) s += a[(buf[i]||Math.floor(Math.random()*1e9))%a.length];
+  return s;
+};
+const code6 = () => (uid(3)+uid(3)).toUpperCase();
+const clone = o => JSON.parse(JSON.stringify(o));
+const esc = s => String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const sleep = ms => new Promise(r=>setTimeout(r,ms));
+
+/* ============================================================
+   IDENTITY — stored per device. There are no passwords.
+   ============================================================ */
+const LS = {
+  get(k,d){ try{ const v=localStorage.getItem("nblf."+k); return v==null?d:JSON.parse(v);}catch(e){return d;} },
+  set(k,v){ try{ localStorage.setItem("nblf."+k, JSON.stringify(v)); }catch(e){} },
+  del(k){ try{ localStorage.removeItem("nblf."+k); }catch(e){} }
+};
+let ME = LS.get("me", null);
+if(!ME || !ME.id){ ME = {id: uid(12), name: ""}; LS.set("me", ME); }
+
+/* ============================================================
+   STORE — one surface, three backends:
+     firebase  when window.FIREBASE_CONFIG is filled in
+     claude    when running inside a Claude artifact
+     memory    otherwise (demo, and local-only fallback)
+   ============================================================ */
+let BACKEND = "memory";          /* firebase | claude | memory */
+let FB = null, CDB = null, DEMO = false;
+const listeners = [];
+const mem = { docs:{}, subs:[] };
+
+function memFire(path){ mem.subs.slice().forEach(f=>{ try{ f(path===undefined?null:path); }catch(e){ console.error(e); } }); }
+function memDoc(path){
+  return {
+    id: path.split("/").pop(),
+    async get(){ const d=mem.docs[path]; return {exists:!!d, data:()=> d?clone(d):undefined}; },
+    async set(v){ mem.docs[path]=clone(v); memFire(path); },
+    async update(v){ mem.docs[path]=Object.assign(mem.docs[path]||{}, clone(v)); memFire(path); },
+    async delete(){ delete mem.docs[path]; memFire(path); },
+    onSnapshot(next){
+      const f = p => { if(p===path||p===null) next({exists:!!mem.docs[path], data:()=>mem.docs[path]?clone(mem.docs[path]):undefined}); };
+      mem.subs.push(f); setTimeout(()=>f(path),0);
+      return ()=>{ const i=mem.subs.indexOf(f); if(i>=0) mem.subs.splice(i,1); };
+    }
+  };
+}
+function memCol(path){
+  const list = () => Object.keys(mem.docs)
+    .filter(k=>k.startsWith(path+"/") && k.slice(path.length+1).indexOf("/")<0)
+    .sort().map(k=>({id:k.split("/").pop(), exists:true, data:()=>clone(mem.docs[k])}));
+  return {
+    doc:(id)=>memDoc(path+"/"+(id||uid())),
+    async get(){ const d=list(); return {docs:d,size:d.length,empty:!d.length}; },
+    onSnapshot(next){
+      const f = ()=>{ const d=list(); next({docs:d,size:d.length,empty:!d.length}); };
+      mem.subs.push(f); setTimeout(f,0);
+      return ()=>{ const i=mem.subs.indexOf(f); if(i>=0) mem.subs.splice(i,1); };
+    }
+  };
+}
+function fbDoc(path){
+  const fs = FB.fs, ref = fs.doc(FB.db, path);
+  return {
+    id: ref.id,
+    async get(){ const s = await fs.getDoc(ref); return {exists:s.exists(), data:()=>s.data()}; },
+    async set(v){ await fs.setDoc(ref, v); },
+    async update(v){ await fs.updateDoc(ref, v); },
+    async delete(){ await fs.deleteDoc(ref); },
+    onSnapshot(next, err){ return fs.onSnapshot(ref, s=>next({exists:s.exists(), data:()=>s.data()}), e=>err&&err({code:e.code||"unavailable", message:e.message})); }
+  };
+}
+function fbCol(path){
+  const fs = FB.fs, ref = fs.collection(FB.db, path);
+  return {
+    doc:(id)=> fbDoc(path+"/"+(id||uid(10))),
+    async get(){ const s = await fs.getDocs(ref); return {docs:s.docs.map(d=>({id:d.id,exists:true,data:()=>d.data()})), size:s.size, empty:s.empty}; },
+    onSnapshot(next, err){ return fs.onSnapshot(ref, s=>next({docs:s.docs.map(d=>({id:d.id,exists:true,data:()=>d.data()})), size:s.size, empty:s.empty}), e=>err&&err({code:e.code||"unavailable", message:e.message})); }
+  };
+}
+const store = {
+  doc(path){
+    if(DEMO) return memDoc(path);
+    if(BACKEND==="firebase") return fbDoc(path);
+    if(BACKEND==="claude") return CDB.doc(path);
+    return memDoc(path);
+  },
+  col(path){
+    if(DEMO) return memCol(path);
+    if(BACKEND==="firebase") return fbCol(path);
+    if(BACKEND==="claude") return CDB.collection(path);
+    return memCol(path);
+  },
+  shared(){ return !DEMO && (BACKEND==="firebase" || BACKEND==="claude"); },
+  /* read-modify-write that is atomic where the backend supports it */
+  async tx(path, mutate){
+    if(!DEMO && BACKEND==="firebase"){
+      const fs = FB.fs, ref = fs.doc(FB.db, path);
+      return await fs.runTransaction(FB.db, async t=>{
+        const s = await t.get(ref);
+        const next = mutate(s.exists() ? s.data() : null);
+        if(next) t.set(ref, next);
+        return next;
+      });
+    }
+    if(!DEMO && BACKEND==="claude"){
+      const ref = CDB.doc(path);
+      try{ const lease = await ref.acquire({holder:ME.id, ttlMs:6000}); if(lease && lease.acquired===false) return null; }catch(e){}
+      const s = await ref.get();
+      const next = mutate(s.exists ? s.data() : null);
+      if(next) await ref.set(next);
+      return next;
+    }
+    const ref = store.doc(path);
+    const s = await ref.get();
+    const next = mutate(s.exists ? s.data() : null);
+    if(next) await ref.set(next);
+    return next;
+  }
+};
+
+/* ============================================================
+   APP STATE
+   ============================================================ */
+const S = {
+  view:"landing", leagueId: LS.get("league", null),
+  league:null, teams:[], draft:null, stats:{}, trades:[], activity:[],
+  err:null, statRound:1, viewRound:1, statOnlyRostered:true,
+  playerFilter:{q:"", club:"", pos:"", avail:"all", sort:"fpts"},
+  modal:null, noStore:false
+};
+const myTeam = () => S.teams.find(t=>t.ownerId===ME.id) || null;
+const isCommish = () => !!S.league && S.league.commissionerId === ME.id;
+const teamById = id => S.teams.find(t=>t.id===id) || null;
+
+function toast(msg, kind){
+  const el = document.createElement("div");
+  el.className = "toast" + (kind?" "+kind:"");
+  el.textContent = msg;
+  document.getElementById("toasts").appendChild(el);
+  setTimeout(()=>{ el.style.opacity="0"; el.style.transition="opacity .3s"; setTimeout(()=>el.remove(),320); }, 3600);
+}
+
+/* ============================================================
+   SCORING — season-long totals. Every player on the squad
+   scores every round. Points stay with whoever owned the
+   player at the time, so a mid-season trade never moves
+   points that were already banked.
+   ============================================================ */
+function roundsWithStats(){
+  return Object.keys(S.stats).map(Number).filter(r=>S.stats[r] && S.stats[r].lines && Object.keys(S.stats[r].lines).length).sort((a,b)=>a-b);
+}
+function rosterAt(team, round){
+  if(!team) return [];
+  if(team.rosters && team.rosters[round]) return team.rosters[round];
+  return team.roster || [];
+}
+function lineFor(round, pid){
+  const s = S.stats[round];
+  return s && s.lines ? s.lines[pid] : null;
+}
+function playerRoundFP(round, pid){
+  const l = lineFor(round, pid);
+  return l ? fpts(l, S.league.scoring) : 0;
+}
+function teamRoundFP(team, round){
+  return r1(rosterAt(team, round).reduce((a,pid)=>a+playerRoundFP(round,pid),0));
+}
+function teamTotal(team){
+  return r1(roundsWithStats().reduce((a,r)=>a+teamRoundFP(team,r),0));
+}
+function teamRoundSeries(team){
+  const rs = roundsWithStats();
+  return rs.map(r=>({round:r, fp:teamRoundFP(team,r)}));
+}
+/* what one player has banked FOR this team */
+function playerForTeam(team, pid){
+  let fp=0, rounds=0;
+  roundsWithStats().forEach(r=>{
+    if(rosterAt(team,r).includes(pid)){
+      const v = playerRoundFP(r,pid);
+      if(lineFor(r,pid)){ fp+=v; rounds++; }
+    }
+  });
+  return {fp:r1(fp), rounds};
+}
+function leaderboard(){
+  const rows = S.teams.map(t=>{
+    const series = teamRoundSeries(t);
+    const played = series.filter(s=>s.fp!==0).length || series.length;
+    const total = r1(series.reduce((a,s)=>a+s.fp,0));
+    const best = series.reduce((m,s)=> s.fp>m.fp?s:m, {round:0,fp:0});
+    return {team:t, total, series, avg: series.length? r1(total/series.length):0,
+            last: series.length? series[series.length-1].fp : 0, best};
+  });
+  rows.sort((a,b)=> b.total-a.total || a.team.name.localeCompare(b.team.name));
+  rows.forEach((r,i)=> r.rank=i+1);
+  return rows;
+}
+function seasonTotals(pid){
+  const t = {gp:0}; STAT_KEYS.forEach(k=>t[k]=0);
+  for(const r in S.stats){
+    const l = S.stats[r].lines && S.stats[r].lines[pid];
+    if(!l) continue;
+    t.gp++; STAT_KEYS.forEach(k=> t[k] += Number(l[k])||0);
+  }
+  t.fp = S.league ? fpts(t, S.league.scoring) : 0;
+  t.fppg = t.gp ? r1(t.fp/t.gp) : 0;
+  return t;
+}
+const rosteredIds = () => { const s=new Set(); S.teams.forEach(t=>(t.roster||[]).forEach(p=>s.add(p))); return s; };
+const ownerOf = pid => S.teams.find(t=>(t.roster||[]).includes(pid)) || null;
+
+/* ============================================================
+   PATHS + PERSISTENCE
+   ============================================================ */
+const pathL   = id => "leagues/"+id;
+const pathT   = id => "leagues/"+id+"/teams";
+const pathD   = id => "leagues/"+id+"/draft/state";
+const pathS   = (id,r) => "leagues/"+id+"/stats/r"+r;
+const pathTr  = id => "leagues/"+id+"/trades";
+const pathAct = id => "leagues/"+id+"/meta/activity";
+
+async function saveLeague(patch){
+  Object.assign(S.league, patch); S.league.updatedAt = Date.now();
+  await store.doc(pathL(S.leagueId)).set(clone(S.league));
+  render();
+}
+async function saveTeam(team, patch){
+  Object.assign(team, patch||{});
+  await store.doc(pathT(S.leagueId)+"/"+team.id).set(clone(team));
+  render();
+}
+async function saveDraft(){ await store.doc(pathD(S.leagueId)).set(clone(S.draft)); render(); }
+async function logAct(text){
+  S.activity.unshift({t:Date.now(), by:ME.name||"Someone", text});
+  S.activity = S.activity.slice(0,120);
+  try{ await store.doc(pathAct(S.leagueId)).set({items:clone(S.activity)}); }catch(e){}
+}
+function unsubAll(){ listeners.splice(0).forEach(u=>{ try{u();}catch(e){} }); }
+
+function subscribe(id){
+  unsubAll();
+  const onErr = e => { S.err = "Live sync stopped ("+(e.code||"error")+"). Reload the page to reconnect."; render(); };
+  listeners.push(store.doc(pathL(id)).onSnapshot(s=>{
+    if(!s.exists){ S.err="That league code no longer exists."; S.league=null; S.leagueId=null; LS.del("league"); S.view="landing"; render(); return; }
+    S.league = s.data(); render();
+  }, onErr));
+  listeners.push(store.col(pathT(id)).onSnapshot(s=>{ S.teams = s.docs.map(d=>Object.assign({id:d.id}, d.data())); render(); }, onErr));
+  listeners.push(store.doc(pathD(id)).onSnapshot(s=>{ S.draft = s.exists ? s.data() : null; render(); }, onErr));
+  listeners.push(store.col(pathTr(id)).onSnapshot(s=>{ S.trades = s.docs.map(d=>Object.assign({id:d.id}, d.data())); render(); }, onErr));
+  listeners.push(store.doc(pathAct(id)).onSnapshot(s=>{ S.activity = s.exists ? (s.data().items||[]) : []; render(); }, onErr));
+  for(let r=1;r<=TOTAL_ROUNDS;r++){
+    listeners.push(store.doc(pathS(id,r)).onSnapshot(s=>{ if(s.exists) S.stats[r]=s.data(); else delete S.stats[r]; render(); }, onErr));
+  }
+}
+
+/* ============================================================
+   ACTIONS
+   ============================================================ */
+async function createLeague(o){
+  const id = code6();
+  const teams = [];
+  for(let i=0;i<o.teamCount;i++){
+    teams.push({ id:"t"+(i+1),
+      name: i===0 ? (o.myTeam || (ME.name?ME.name+"'s Squad":"Squad 1")) : "Open Slot "+(i+1),
+      manager: i===0 ? (ME.name||"You") : "", ownerId: i===0 ? ME.id : null,
+      roster:[], rosters:{} });
+  }
+  const league = { id, name:o.name, season:SEASON, commissionerId:ME.id, commissionerName:ME.name||"Commissioner",
+    teamCount:o.teamCount, rosterSize:o.rosterSize, scoring:Object.assign({},o.scoring),
+    status:"predraft", currentRound:1, createdAt:Date.now() };
+  S.leagueId = id; LS.set("league", id);
+  await store.doc(pathL(id)).set(clone(league));
+  for(const t of teams) await store.doc(pathT(id)+"/"+t.id).set(clone(t));
+  await store.doc(pathD(id)).set({started:false, order:[], picks:[], rounds:o.rosterSize});
+  await store.doc(pathAct(id)).set({items:[{t:Date.now(), by:ME.name||"Commissioner", text:"created the league"}]});
+  S.view="home"; S.err=null; subscribe(id); render();
+  return id;
+}
+async function joinLeague(codeIn){
+  const id = String(codeIn||"").trim().toUpperCase();
+  if(!/^[A-Z0-9]{6}$/.test(id)){ S.err="League codes are six characters, like 7K2M9Q."; render(); return; }
+  const snap = await store.doc(pathL(id)).get();
+  if(!snap.exists){ S.err="No league found with code "+id+". Check it with your commissioner."; render(); return; }
+  S.leagueId=id; LS.set("league", id); S.err=null; S.view="home"; subscribe(id); render();
+}
+async function claimTeam(teamId, teamName){
+  const t = teamById(teamId); if(!t) return;
+  if(myTeam() && myTeam().id !== teamId){ toast("You already manage a squad in this league.","bad"); return; }
+  const meId = ME.id, nm = ME.name||"Manager";
+  const res = await store.tx(pathT(S.leagueId)+"/"+teamId, cur=>{
+    if(!cur) return null;
+    if(cur.ownerId && cur.ownerId !== meId) return null;
+    return Object.assign({}, cur, {ownerId:meId, manager:nm, name: teamName || cur.name});
+  });
+  if(!res){ toast("That slot has just been taken — pick another.","bad"); render(); return; }
+  logAct("joined as "+(teamName||t.name));
+  S.modal=null; toast("You're in.","good"); render();
+}
+
+/* ---------- draft (snake, no positional requirements) ---------- */
+function draftSlotFor(pickNo, order){
+  const n = order.length; if(!n) return null;
+  const rnd = Math.floor(pickNo/n), i = pickNo % n;
+  return order[rnd % 2 === 0 ? i : n-1-i];
+}
+async function startDraft(randomise){
+  const ids = S.teams.map(t=>t.id);
+  const order = randomise ? ids.slice().sort(()=>Math.random()-0.5) : ids;
+  S.draft = {started:true, order, picks:[], rounds:S.league.rosterSize};
+  await saveDraft();
+  await saveLeague({status:"drafting"});
+  logAct("started the draft");
+  S.view="draft"; render();
+}
+async function makePick(playerId){
+  const d = S.draft; if(!d || !d.started) return;
+  const teamId = draftSlotFor(d.picks.length, d.order);
+  const t = teamById(teamId); if(!t) return;
+  const mine = myTeam();
+  if(!(isCommish() || (mine && mine.id===teamId))){ toast("It's not your pick.","bad"); return; }
+  if(ownerOf(playerId)){ toast("Already drafted.","bad"); return; }
+  const before = d.picks.length;
+  const res = await store.tx(pathD(S.leagueId), cur=>{
+    if(!cur || cur.picks.length !== before) return null;
+    if(cur.picks.some(p=>p.p===playerId)) return null;
+    return Object.assign({}, cur, {picks: cur.picks.concat([{p:playerId, team:teamId, at:Date.now()}])});
+  });
+  if(!res){ toast("The board moved — have another look.","bad"); render(); return; }
+  S.draft = res;
+  await saveTeam(t, {roster:(t.roster||[]).concat([playerId])});
+  logAct(t.name+" drafted "+P[playerId].name);
+  if(res.picks.length >= res.order.length * res.rounds){
+    await saveLeague({status:"active"});
+    toast("Draft complete. The season is live.","good"); S.view="leaderboard";
+  }
+  render();
+}
+async function autopick(){
+  const d = S.draft; if(!d) return;
+  const taken = rosteredIds();
+  const pool = PLAYERS.filter(p=>!taken.has(p.id)).sort((a,b)=> seasonTotals(b.id).fp - seasonTotals(a.id).fp || a.rank-b.rank);
+  if(pool[0]) await makePick(pool[0].id);
+}
+
+/* ---------- free agents + trades ---------- */
+async function addPlayer(pid, dropId){
+  const t = myTeam(); if(!t){ toast("Claim a squad first.","bad"); return; }
+  if(ownerOf(pid)){ toast("That player is on a squad.","bad"); return; }
+  let roster = (t.roster||[]).slice();
+  if(roster.length >= S.league.rosterSize){
+    if(!dropId){ S.modal={type:"drop", add:pid}; render(); return; }
+    roster = roster.filter(x=>x!==dropId);
+  } else if(dropId) roster = roster.filter(x=>x!==dropId);
+  roster.push(pid);
+  await saveTeam(t, {roster});
+  logAct(t.name+" signed "+P[pid].name+(dropId?" and released "+P[dropId].name:""));
+  S.modal=null; toast("Signed "+P[pid].name+".","good"); render();
+}
+async function dropPlayer(pid){
+  const t = myTeam(); if(!t) return;
+  await saveTeam(t, {roster:(t.roster||[]).filter(x=>x!==pid)});
+  logAct(t.name+" released "+P[pid].name);
+  toast("Released "+P[pid].name+"."); render();
+}
+async function proposeTrade(toTeamId, give, get){
+  const t = myTeam(); if(!t) return;
+  if(!give.length || !get.length){ toast("Put at least one player on each side.","bad"); return; }
+  const ref = store.col(pathTr(S.leagueId)).doc(uid(10));
+  const body = {from:t.id, to:toTeamId, give, get, status:"pending", at:Date.now(), byName:ME.name||"Manager"};
+  await ref.set(body);
+  if(!store.shared()) S.trades = S.trades.concat([Object.assign({id:ref.id||uid(10)}, body)]);
+  logAct(t.name+" offered a trade to "+((teamById(toTeamId)||{}).name||"another squad"));
+  S.modal=null; toast("Offer sent.","good"); render();
+}
+async function respondTrade(tr, accept){
+  const me = myTeam();
+  if(!me || me.id !== tr.to){ toast("Only the receiving manager can respond.","bad"); return; }
+  if(!accept){
+    await store.col(pathTr(S.leagueId)).doc(tr.id).set(Object.assign({}, tr, {status:"declined"}));
+    if(!store.shared()) tr.status="declined";
+    logAct("declined a trade"); render(); return;
+  }
+  const A = teamById(tr.from), B = teamById(tr.to);
+  if(!A || !B) return;
+  await saveTeam(A, {roster:(A.roster||[]).filter(x=>!tr.give.includes(x)).concat(tr.get)});
+  await saveTeam(B, {roster:(B.roster||[]).filter(x=>!tr.get.includes(x)).concat(tr.give)});
+  await store.col(pathTr(S.leagueId)).doc(tr.id).set(Object.assign({}, tr, {status:"accepted"}));
+  if(!store.shared()) tr.status="accepted";
+  logAct("trade accepted: "+A.name+" ⇄ "+B.name);
+  toast("Trade done. Points already banked stay where they were.","good"); render();
+}
+
+/* ---------- box scores ---------- */
+async function saveStatLine(round, pid, line){
+  const cur = clone(S.stats[round] || {lines:{}});
+  const clean = {}; let any=false;
+  STAT_KEYS.forEach(k=>{ const v=Number(line[k]); if(!isNaN(v) && line[k]!==undefined && line[k]!==""){ clean[k]=v; if(v!==0) any=true; } });
+  if(Object.keys(clean).length) cur.lines[pid]=clean; else delete cur.lines[pid];
+  S.stats[round]=cur;
+  await store.doc(pathS(S.leagueId, round)).set(cur);
+  render();
+}
+async function importCSV(round, text){
+  const rows = String(text).split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+  if(!rows.length) return {ok:0, miss:[]};
+  const first = rows[0].split(",").map(s=>s.trim().toLowerCase());
+  const hasHeader = first.includes("player") || first.includes("name");
+  const cols = hasHeader ? first : ["player"].concat(STAT_KEYS);
+  const start = hasHeader ? 1 : 0;
+  const cur = clone(S.stats[round] || {lines:{}});
+  const index = {};
+  PLAYERS.forEach(p=>{ index[p.name.toLowerCase()]=p.id; index[p.name.toLowerCase().replace(/[^a-z]/g,"")]=p.id; });
+  const miss=[]; let ok=0;
+  const nameCol = cols.indexOf("player")>=0 ? cols.indexOf("player") : (cols.indexOf("name")>=0 ? cols.indexOf("name") : 0);
+  for(let i=start;i<rows.length;i++){
+    const cells = rows[i].split(",").map(s=>s.trim());
+    const key = String(cells[nameCol]||"").toLowerCase();
+    const pid = index[key] || index[key.replace(/[^a-z]/g,"")];
+    if(!pid){ if(cells[nameCol]) miss.push(cells[nameCol]); continue; }
+    const line={};
+    STAT_KEYS.forEach(k=>{ const ci=cols.indexOf(k); if(ci>=0){ const v=Number(cells[ci]); if(!isNaN(v)) line[k]=v; } });
+    cur.lines[pid]=line; ok++;
+  }
+  S.stats[round]=cur;
+  await store.doc(pathS(S.leagueId, round)).set(cur);
+  render();
+  return {ok, miss};
+}
+async function advanceRound(){
+  const from = S.league.currentRound||1;
+  const to = Math.min(TOTAL_ROUNDS, from+1);
+  if(to===from){ toast("That's the last round of the season."); return; }
+  for(const t of S.teams){                        /* freeze who owned what in the round just closed */
+    const rosters = Object.assign({}, t.rosters||{});
+    rosters[from] = (t.roster||[]).slice();
+    await saveTeam(t, {rosters});
+  }
+  await saveLeague({currentRound: to});
+  logAct("closed Round "+from+" and moved to Round "+to);
+  toast("Round "+from+" locked. Now on Round "+to+".","good");
+}
+
+/* ============================================================
+   DEMO LEAGUE — in memory, nothing saved, invented box scores.
+   ============================================================ */
+function rng(seed){ let s=seed>>>0; return ()=> (s=(s*1664525+1013904223)>>>0)/4294967296; }
+function loadDemo(){
+  DEMO = true; unsubAll(); mem.docs={}; mem.subs.length=0;
+  const names=["Cotton Club","Hobart Hornets","Wollongong Wreckers","Taipan Terrors","Bay City Ballers","Kingsford Kings","Ingles Disciples","Pinder's Posse"];
+  const mgrs=["You","Sam","Priya","Dec","Jules","Tam","Ollie","Nico"];
+  const teams = names.map((n,i)=>({id:"t"+(i+1), name:n, manager:mgrs[i], ownerId: i===0?ME.id:"demo"+i, roster:[], rosters:{}}));
+  const league = {id:"DEMO01", name:"The Demo Comp", season:SEASON, commissionerId:ME.id, commissionerName:"You",
+    teamCount:8, rosterSize:DEFAULT_ROSTER_SIZE, scoring:Object.assign({},DEFAULT_SCORING),
+    status:"active", currentRound:5, createdAt:Date.now(), demo:true};
+  S.league = league; S.teams = teams; S.leagueId="DEMO01";
+
+  const r = rng(20260919);
+  const pool = PLAYERS.slice().sort((a,b)=> (a.posOk?0:1)-(b.posOk?0:1) || r()-0.5);
+  const order = teams.map(t=>t.id), picks=[];
+  for(let k=0;k<order.length*league.rosterSize;k++){
+    const tid = draftSlotFor(k, order), t = teams.find(x=>x.id===tid);
+    const p = pool.shift(); if(!p) break;
+    t.roster.push(p.id); picks.push({p:p.id, team:tid, at:Date.now()});
+  }
+  S.draft = {started:true, order, picks, rounds:league.rosterSize};
+
+  const q = rng(77), tier={};
+  PLAYERS.forEach(p=> tier[p.id] = 0.35 + 0.9*Math.pow(q(),0.8));
+  S.stats = {};
+  for(let rr=1; rr<=5; rr++){
+    const lines={};
+    PLAYERS.forEach(p=>{
+      if(q()<0.10) return;
+      const w=tier[p.id], big=p.pos==="C", g=p.pos==="G";
+      const mn=Math.round(10+22*w+q()*8);
+      const fga=Math.max(1,Math.round((3+11*w)*(0.75+q()*0.5)));
+      const fgm=Math.round(fga*(0.36+q()*0.22));
+      const tpm=g?Math.round(fgm*(0.25+q()*0.35)):Math.round(fgm*(q()*0.22));
+      const fta=Math.round((1+4*w)*q()*1.4), ftm=Math.round(fta*(0.6+q()*0.35));
+      lines[p.id]={min:mn, pts:fgm*2+tpm+ftm, reb:Math.round((big?4:1.5)+6*w*q()*1.5),
+        ast:Math.round((g?2:0.7)+5*w*q()), stl:q()<0.55?Math.round(q()*2.4):0,
+        blk: big&&q()<0.55?Math.round(q()*2.2):(q()<0.15?1:0), to:Math.round(q()*3.2), fgm,fga,ftm,fta,tpm};
+    });
+    S.stats[rr]={lines};
+  }
+  teams.forEach(t=>{ for(let rr=1;rr<=4;rr++) t.rosters[rr]=t.roster.slice(); });
+  S.activity=[
+    {t:Date.now()-3.4e6, by:"Dec", text:"signed Reyne Smith and released Brody Nunn"},
+    {t:Date.now()-1.1e7, by:"Priya", text:"offered a trade to Cotton Club"},
+    {t:Date.now()-2.4e7, by:"You", text:"closed Round 4 and moved to Round 5"}
+  ];
+  S.trades=[]; S.view="home"; S.err=null; S.statRound=5;
+  render();
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+const NAV = [
+  {id:"home",       label:"League Hub",  ic:"◎"},
+  {id:"leaderboard",label:"Ladder",      ic:"≡"},
+  {id:"team",       label:"My Squad",    ic:"▦"},
+  {id:"players",    label:"Players",     ic:"⌕"},
+  {id:"trades",     label:"Trades",      ic:"⇌"},
+  {id:"draft",      label:"Draft Room",  ic:"⌁"},
+  {id:"stats",      label:"Box Scores",  ic:"#"},
+  {id:"settings",   label:"Settings",    ic:"⚙"}
+];
+const stripe = c => '<span class="stripe" style="background:'+CLUB[c].color+'"></span>';
+function pcell(p){
+  if(!p) return '<span class="empt">—</span>';
+  return stripe(p.club)+'<span class="pname">'+esc(p.name)+'</span> '+
+    '<span class="pos'+(p.posOk?"":" unk")+'" title="'+(p.posOk?({G:"Guard",F:"Forward",C:"Centre"})[p.pos]:"Position not confirmed")+'">'+(p.posOk?p.pos:"?")+'</span> '+
+    '<span class="pmeta">'+CLUB[p.club].id+(p.jersey?" · #"+p.jersey:"")+'</span>';
+}
+function fmtTime(t){
+  const d=Math.floor((Date.now()-t)/60000);
+  if(d<1) return "just now"; if(d<60) return d+"m ago";
+  const h=Math.floor(d/60); if(h<24) return h+"h ago";
+  return Math.floor(h/24)+"d ago";
+}
+function sparkline(series, max){
+  if(!series.length) return '<span class="pmeta">—</span>';
+  const m = max || Math.max(1, ...series.map(s=>s.fp));
+  return '<span class="bars">'+series.map(s=>'<i class="'+(s.fp?"":"zero")+'" style="height:'+Math.max(3,Math.round((s.fp/m)*26))+'px" title="Round '+s.round+': '+s.fp.toFixed(1)+'"></i>').join("")+'</span>';
+}
+
+function render(){
+  const app = document.getElementById("app");
+  if(!app) return;
+  const y = window.scrollY;
+  const fk = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.fk : null;
+  const caret = document.activeElement && document.activeElement.selectionStart;
+  if(!S.league) app.innerHTML = renderLanding();
+  else app.innerHTML = '<div class="shell">'+renderRail()+'<div class="main">'+renderTop()+'<div class="page">'+renderView()+'</div></div></div>'+renderTabbar()+(S.modal?renderModal():"");
+  wire();
+  if(fk){ const el=document.querySelector('[data-fk="'+fk+'"]'); if(el){ el.focus(); try{ if(caret!=null) el.setSelectionRange(caret,caret); }catch(e){} } }
+  window.scrollTo(0,y);
+}
+
+function renderLanding(){
+  const counts = CLUBS.map(c=>({c, n:PLAYERS.filter(p=>p.club===c.id).length}));
+  const modeNote = BACKEND==="firebase"
+    ? '<span class="pill win"><span class="dot"></span>Shared league database connected</span>'
+    : BACKEND==="claude"
+      ? '<span class="pill win"><span class="dot"></span>Connected</span>'
+      : '<span class="pill loss"><span class="dot"></span>No database — local only</span>';
+  return '<div class="land">'+
+    '<div class="row" style="gap:9px;margin-bottom:26px"><span class="ball"></span>'+
+      '<div><div style="font-family:var(--f-disp);font-size:21px;text-transform:uppercase;letter-spacing:.03em;line-height:1">Hoop Ladder</div>'+
+      '<div class="eyebrow">'+SEASON+' Fantasy · Australian NBL</div></div>'+
+      '<span class="spacer"></span>'+modeNote+'</div>'+
+    '<div class="hero">'+
+      '<div><h2>Draft the <em>NBL</em>.<br>Rack up the points.</h2>'+
+      '<p>Season-long total points, not weekly matchups. Draft a squad from the ten NBL clubs, and every player you own scores for you every round, all 21 rounds. Sign free agents, trade, and the ladder is simply who has banked the most.</p>'+
+      (S.err?'<div class="note" style="margin-top:14px;border-color:var(--loss);background:color-mix(in srgb,var(--loss) 10%, transparent)">'+esc(S.err)+'</div>':'')+
+      '</div>'+
+      '<div class="scorecard"><div class="sc-h"><span>'+SEASON+' player pool</span><span class="mono">'+PLAYERS.length+' players</span></div>'+
+        counts.map(x=>'<div class="sc-row">'+stripe(x.c.id)+'<span class="nm">'+esc(x.c.name)+'</span><span class="pmeta">'+x.c.id+'</span><span class="num">'+x.n+'</span></div>').join("")+
+      '</div>'+
+    '</div>'+
+    '<div class="opts">'+
+      '<div class="opt"><h3>Start a league</h3><p>You become commissioner: squad size, scoring, draft order. You get a six-character code to send your mates.</p>'+
+      '<button class="btn pri" data-act="new-league"'+(S.noStore?' disabled':'')+'>Create league</button></div>'+
+      '<div class="opt"><h3>Join with a code</h3><p>Got a code from your commissioner? Drop it in and claim one of the open squad slots.</p>'+
+        '<div class="row"><input class="inp" id="joincode" data-fk="joincode" placeholder="e.g. 7K2M9Q" maxlength="6" style="text-transform:uppercase;font-family:var(--f-mono);letter-spacing:.12em">'+
+        '<button class="btn" data-act="join"'+(S.noStore?' disabled':'')+'>Join</button></div></div>'+
+      '<div class="opt"><h3>Take a look first</h3><p>An eight-squad league five rounds in, running on invented box scores, so you can click through everything.</p><button class="btn" data-act="demo">Open demo league</button></div>'+
+    '</div>'+
+    (S.noStore ? '<div class="note" style="margin-top:22px;border-color:var(--loss)"><b>No database connected.</b> Leagues can’t be created or shared until Firebase is set up — see the setup steps in README.md. The demo works regardless.</div>' : '')+
+    '<div class="note" style="margin-top:18px"><b>How the numbers get in:</b> the NBL has no free public statistics feed, so this site does not pull live box scores. After each round the commissioner enters the numbers — typed in, or pasted as CSV — and every total on the site is calculated from those.</div>'+
+    '<p class="pmeta" style="margin-top:14px;max-width:74ch">Rosters compiled September 2026 from the ten clubs’ own squad pages. Players whose listed position could not be confirmed show a <span class="pos unk">?</span>. Positions are shown for information only — there are no positional requirements in this format.</p>'+
+  '</div>';
+}
+function renderRail(){
+  const t = myTeam();
+  const pend = S.trades.filter(x=>x.status==="pending" && t && x.to===t.id).length;
+  return '<aside class="rail">'+
+    '<div class="brand"><span class="ball"></span><div><h1>Hoop Ladder</h1><small>'+esc(S.league.season)+' Fantasy</small></div></div>'+
+    '<nav class="nav"><div class="sect">League</div>'+
+      NAV.map(n=>{
+        if((n.id==="stats"||n.id==="settings") && !isCommish()) return "";
+        const badge = n.id==="draft" && S.league.status==="drafting" ? '<span class="badge">LIVE</span>'
+                    : n.id==="trades" && pend ? '<span class="badge">'+pend+'</span>' : '';
+        return '<button data-nav="'+n.id+'"'+(S.view===n.id?' aria-current="page"':'')+'><span aria-hidden="true" style="width:14px;display:inline-block;text-align:center;opacity:.7">'+n.ic+'</span>'+n.label+badge+'</button>';
+      }).join("")+
+    '</nav>'+
+    '<div class="railfoot"><button class="btn sm gh" data-act="leave">Switch league</button>'+
+      '<button class="btn sm gh" data-act="theme" title="Switch between light and dark" style="margin-left:auto">Theme</button></div>'+
+  '</aside>';
+}
+function renderTop(){
+  const t = myTeam();
+  const row = t ? leaderboard().find(r=>r.team.id===t.id) : null;
+  return '<div class="topbar">'+
+    '<span class="lg">'+esc(S.league.name)+'</span>'+
+    (S.league.demo ? '<span class="pill live"><span class="dot"></span>Demo — nothing is saved</span>'
+      : '<span class="pill">Code <b class="mono" style="letter-spacing:.1em">'+esc(S.leagueId)+'</b></span>')+
+    '<span class="sep"></span>'+
+    '<span class="rnd eyebrow">Round <b>'+S.league.currentRound+'</b> of '+TOTAL_ROUNDS+'</span>'+
+    '<span class="spacer"></span>'+
+    (t ? '<span class="pmeta">'+esc(t.name)+'</span><span class="pill acc">'+(row?"#"+row.rank+" · "+row.total.toFixed(1)+" FP":"—")+'</span>'
+       : '<button class="btn sm pri" data-act="claim">Claim a squad</button>')+
+  '</div>';
+}
+function renderTabbar(){
+  const items = NAV.filter(n=>!((n.id==="stats"||n.id==="settings") && !isCommish())).slice(0,5);
+  return '<nav class="tabbar">'+items.map(n=>'<button data-nav="'+n.id+'"'+(S.view===n.id?' aria-current="page"':'')+'><span class="ic" aria-hidden="true">'+n.ic+'</span>'+n.label.split(" ")[0]+'</button>').join("")+'</nav>';
+}
+function renderView(){
+  switch(S.view){
+    case "home": return viewHome();
+    case "leaderboard": return viewLeaderboard();
+    case "team": return viewSquad();
+    case "players": return viewPlayers();
+    case "trades": return viewTrades();
+    case "draft": return viewDraft();
+    case "stats": return isCommish()?viewStats():viewHome();
+    case "settings": return isCommish()?viewSettings():viewHome();
+    default: return viewHome();
+  }
+}
+
+/* ---------------- League Hub ---------------- */
+function viewHome(){
+  const t = myTeam(), board = leaderboard();
+  const row = t ? board.find(r=>r.team.id===t.id) : null;
+  const open = S.teams.filter(x=>!x.ownerId).length;
+  const rs = roundsWithStats();
+  let out = '<div class="pagehead"><h2>League Hub</h2><p>'+
+    (S.league.status==="predraft" ? "Pre-draft. Get everyone into a squad slot, then the commissioner opens the draft."
+     : S.league.status==="drafting" ? "The draft is live."
+     : "Season-long total points — Round "+S.league.currentRound+" of "+TOTAL_ROUNDS+".")+'</p></div>';
+
+  if(S.league.demo) out += '<div class="note" style="margin-bottom:14px"><b>This is the demo league.</b> The eight squads, their rosters and every box score are invented so you can see the site working. Nothing is saved, and none of these numbers are real NBL results.</div>';
+
+  if(S.league.status==="predraft"){
+    out += '<div class="card" style="margin-bottom:14px"><div class="ch"><h3>Getting started</h3></div><div class="cb">'+
+      '<ol style="margin:0;padding-left:20px;line-height:1.9">'+
+      '<li>Send this code to your league: <b class="mono" style="letter-spacing:.12em;font-size:16px">'+esc(S.leagueId)+'</b>'+(S.league.demo?' <span class="pmeta">(demo — not a real code)</span>':'')+'</li>'+
+      '<li>'+(open? open+' squad slot'+(open>1?'s':'')+' still open.' : 'All squad slots are claimed.')+'</li>'+
+      '<li>'+(isCommish()?'You’re the commissioner — open the draft when everyone’s in.':'Waiting on the commissioner to open the draft.')+'</li>'+
+      '</ol>'+(isCommish()?'<div class="row" style="margin-top:12px"><button class="btn pri" data-nav="draft">Set up the draft</button></div>':'')+
+      '</div></div>';
+  }
+
+  if(row && S.league.status==="active"){
+    const lead = board[0];
+    const gap = r1(lead.total - row.total);
+    out += '<div class="card" style="margin-bottom:14px"><div class="cb">'+
+      '<div class="hero-total">'+
+        '<div><div class="eyebrow">'+esc(t.name)+' · season total</div><div class="n">'+row.total.toFixed(1)+'</div>'+
+        '<div class="pmeta">fantasy points from '+rs.length+' round'+(rs.length===1?'':'s')+'</div></div>'+
+        '<div class="kpis">'+
+          '<div class="kpi"><div class="k">Position</div><div class="v">'+row.rank+'<span style="font-size:13px;color:var(--muted)">/'+board.length+'</span></div><div class="s">'+(row.rank===1?"top of the ladder":gap.toFixed(1)+" behind "+lead.team.name)+'</div></div>'+
+          '<div class="kpi"><div class="k">Per round</div><div class="v">'+row.avg.toFixed(1)+'</div><div class="s">average</div></div>'+
+          '<div class="kpi"><div class="k">Last round</div><div class="v">'+row.last.toFixed(1)+'</div><div class="s">'+(rs.length?"Round "+rs[rs.length-1]:"—")+'</div></div>'+
+          '<div class="kpi"><div class="k">Best round</div><div class="v">'+row.best.fp.toFixed(1)+'</div><div class="s">'+(row.best.round?"Round "+row.best.round:"—")+'</div></div>'+
+        '</div>'+
+      '</div>'+
+      '<div class="row" style="margin-top:14px"><button class="btn sm" data-nav="team">My squad</button><button class="btn sm" data-nav="leaderboard">Full ladder</button><button class="btn sm" data-nav="players">Free agents</button></div>'+
+      '</div></div>';
+  }
+
+  out += '<div class="g2">'+
+    '<div class="card"><div class="ch"><h3>Ladder</h3><span class="spacer"></span><button class="btn sm gh" data-nav="leaderboard">All</button></div><div class="tw">'+
+      '<table><thead><tr><th class="l" style="width:44px">#</th><th class="l">Squad</th><th>Total FP</th><th class="l">By round</th></tr></thead><tbody>'+
+      board.slice(0,6).map(r=>'<tr'+(t&&r.team.id===t.id?' class="you"':'')+'><td class="l rankcell">'+(r.rank===1?'<b>1</b>':r.rank)+'</td>'+
+        '<td class="l"><b>'+esc(r.team.name)+'</b><div class="pmeta">'+esc(r.team.manager||"— open —")+'</div></td>'+
+        '<td class="num"><b>'+r.total.toFixed(1)+'</b></td>'+
+        '<td class="l">'+sparkline(r.series)+'</td></tr>').join("")+
+      '</tbody></table></div></div>'+
+    '<div class="card"><div class="ch"><h3>Activity</h3></div><div class="cb" style="padding:6px 14px 12px">'+
+      (S.activity.length ? S.activity.slice(0,8).map(a=>'<div style="padding:7px 0;border-bottom:1px solid var(--line-soft)"><b>'+esc(a.by)+'</b> '+esc(a.text)+'<div class="pmeta">'+fmtTime(a.t)+'</div></div>').join("")
+        : '<div class="empty" style="padding:24px"><b>Quiet</b>Signings and trades show up here.</div>')+
+    '</div></div>'+
+  '</div>';
+  return out;
+}
+
+/* ---------------- Ladder ---------------- */
+function viewLeaderboard(){
+  const board = leaderboard(), t = myTeam(), rs = roundsWithStats();
+  const max = Math.max(1, ...board.flatMap(r=>r.series.map(s=>s.fp)));
+  return '<div class="pagehead"><h2>Ladder</h2><p>Total fantasy points banked across the season. Every player on a squad scores every round — no lineups, no head-to-head.</p></div>'+
+    (rs.length ? '' : '<div class="note" style="margin-bottom:14px">No box scores entered yet, so every squad sits on zero. '+(isCommish()?'Head to Box Scores to enter Round 1.':'Your commissioner enters them after each round.')+'</div>')+
+    '<div class="card"><div class="tw"><table><thead><tr>'+
+      '<th class="l" style="width:48px">#</th><th class="l">Squad</th><th class="l">Manager</th><th>Total FP</th><th>Per round</th><th>Last</th><th>Best</th><th class="l">By round</th>'+
+    '</tr></thead><tbody>'+board.map(r=>
+      '<tr'+(t&&r.team.id===t.id?' class="you"':'')+'>'+
+      '<td class="l rankcell">'+(r.rank===1?'<b>1</b>':r.rank)+'</td>'+
+      '<td class="l"><b>'+esc(r.team.name)+'</b></td>'+
+      '<td class="l pmeta">'+esc(r.team.manager||"— open —")+'</td>'+
+      '<td class="num"><b>'+r.total.toFixed(1)+'</b></td>'+
+      '<td class="num">'+r.avg.toFixed(1)+'</td>'+
+      '<td class="num">'+r.last.toFixed(1)+'</td>'+
+      '<td class="num">'+(r.best.round?r.best.fp.toFixed(1)+' <span class="pmeta">R'+r.best.round+'</span>':'—')+'</td>'+
+      '<td class="l">'+sparkline(r.series, max)+'</td></tr>').join("")+
+    '</tbody></table></div></div>'+
+    (rs.length? '<div class="card" style="margin-top:16px"><div class="ch"><h3>Round by round</h3></div><div class="tw"><table>'+
+      '<thead><tr><th class="l">Squad</th>'+rs.map(r=>'<th>R'+r+'</th>').join("")+'<th>Total</th></tr></thead><tbody>'+
+      board.map(r=>'<tr'+(t&&r.team.id===t.id?' class="you"':'')+'><td class="l">'+esc(r.team.name)+'</td>'+
+        r.series.map(s=>'<td class="num">'+s.fp.toFixed(1)+'</td>').join("")+
+        '<td class="num"><b>'+r.total.toFixed(1)+'</b></td></tr>').join("")+
+      '</tbody></table></div></div>' : '');
+}
+
+/* ---------------- My Squad ---------------- */
+function viewSquad(){
+  const t = myTeam();
+  if(!t) return '<div class="pagehead"><h2>My Squad</h2></div><div class="card"><div class="empty"><b>No squad yet</b>Claim one of the open slots to start.<div style="margin-top:12px"><button class="btn pri" data-act="claim">Claim a squad</button></div></div></div>';
+  const board = leaderboard(), row = board.find(r=>r.team.id===t.id);
+  const rows = (t.roster||[]).map(pid=>({p:P[pid], mine:playerForTeam(t,pid), all:seasonTotals(pid)}))
+    .filter(x=>x.p).sort((a,b)=> b.mine.fp - a.mine.fp);
+  const banked = r1(rows.reduce((a,x)=>a+x.mine.fp,0));
+  const orphan = r1(row.total - banked);
+  return '<div class="pagehead"><h2>'+esc(t.name)+'</h2><p>Everyone here scores every round. No lineup to set — the only levers are who you draft, sign and trade for.</p></div>'+
+    '<div class="row" style="margin-bottom:14px">'+
+      '<span class="pill acc">Season total <b class="num">'+row.total.toFixed(1)+'</b></span>'+
+      '<span class="pill">Ladder #'+row.rank+' of '+board.length+'</span>'+
+      '<span class="pill">Squad '+(t.roster||[]).length+'/'+S.league.rosterSize+'</span>'+
+      '<span class="spacer"></span><button class="btn sm" data-act="renameteam">Rename</button>'+
+      '<button class="btn sm pri" data-nav="players">Sign a free agent</button></div>'+
+    (rows.length? '<div class="card"><div class="tw"><table><thead><tr>'+
+      '<th class="l">Player</th><th>FP for you</th><th>Rounds</th><th>Their total FP</th><th>FP/game</th>'+
+      ["pts","reb","ast","stl","blk"].map(k=>'<th>'+STAT_LABEL[k]+'</th>').join("")+'<th></th></tr></thead><tbody>'+
+      rows.map(x=>'<tr><td class="l">'+pcell(x.p)+'</td>'+
+        '<td class="num"><b>'+x.mine.fp.toFixed(1)+'</b></td>'+
+        '<td class="num">'+x.mine.rounds+'</td>'+
+        '<td class="num">'+x.all.fp.toFixed(1)+'</td>'+
+        '<td class="num">'+x.all.fppg.toFixed(1)+'</td>'+
+        ["pts","reb","ast","stl","blk"].map(k=>'<td class="num">'+x.all[k]+'</td>').join("")+
+        '<td><button class="btn sm gh" data-act="drop" data-p="'+x.p.id+'">Release</button></td></tr>').join("")+
+      '</tbody></table></div></div>'
+      : '<div class="card"><div class="empty"><b>Empty squad</b>Draft or sign some players.</div></div>')+
+    (Math.abs(orphan)>0.05 ? '<p class="pmeta" style="margin-top:10px">'+orphan.toFixed(1)+' of your total was banked by players you have since traded or released. Those points stay with you.</p>' : '')+
+    '<p class="pmeta" style="margin-top:10px">“FP for you” counts only rounds where the player was on your squad. “Their total FP” is everything they’ve scored this season for anyone.</p>';
+}
+
+/* ---------------- Players ---------------- */
+function filteredPlayers(){
+  const f = S.playerFilter, taken = rosteredIds();
+  let list = PLAYERS.slice();
+  if(f.q){ const q=f.q.toLowerCase(); list=list.filter(p=>p.name.toLowerCase().includes(q)||CLUB[p.club].name.toLowerCase().includes(q)); }
+  if(f.club) list=list.filter(p=>p.club===f.club);
+  if(f.pos) list=list.filter(p=>p.pos===f.pos);
+  if(f.avail==="free") list=list.filter(p=>!taken.has(p.id));
+  if(f.avail==="rostered") list=list.filter(p=>taken.has(p.id));
+  if(f.sort==="fpts") list.sort((a,b)=> seasonTotals(b.id).fp-seasonTotals(a.id).fp || a.name.localeCompare(b.name));
+  else if(f.sort==="fppg") list.sort((a,b)=> seasonTotals(b.id).fppg-seasonTotals(a.id).fppg || a.name.localeCompare(b.name));
+  else if(f.sort==="name") list.sort((a,b)=>a.name.localeCompare(b.name));
+  else list.sort((a,b)=> a.club.localeCompare(b.club)||a.name.localeCompare(b.name));
+  return list;
+}
+function viewPlayers(){
+  const f=S.playerFilter, list=filteredPlayers(), t=myTeam();
+  const drafting = S.league.status==="drafting";
+  const d = S.draft;
+  const onClock = drafting && d && d.started ? teamById(draftSlotFor(d.picks.length, d.order)) : null;
+  const canPick = onClock && (isCommish() || (t && t.id===onClock.id));
+  return '<div class="pagehead"><h2>Players</h2><p>'+PLAYERS.length+' players across the ten '+SEASON+' clubs. Fantasy points come from the box scores entered for this league.</p></div>'+
+    (onClock? '<div class="note" style="margin-bottom:12px"><b>'+esc(onClock.name)+'</b> is on the clock — pick '+(d.picks.length+1)+' of '+(d.order.length*d.rounds)+'.'+(canPick?'':' Only that manager or the commissioner can draft.')+'</div>':'')+
+    '<div class="row" style="margin-bottom:12px">'+
+      '<input class="inp" data-fk="pq" data-act="pq" value="'+esc(f.q)+'" placeholder="Search player or club" style="max-width:250px">'+
+      '<select class="inp" data-act="pclub" style="width:auto"><option value="">All clubs</option>'+CLUBS.map(c=>'<option value="'+c.id+'"'+(f.club===c.id?' selected':'')+'>'+c.name+'</option>').join("")+'</select>'+
+      '<select class="inp" data-act="ppos" style="width:auto"><option value="">All positions</option>'+[["G","Guards"],["F","Forwards"],["C","Centres"],["U","Unconfirmed"]].map(o=>'<option value="'+o[0]+'"'+(f.pos===o[0]?' selected':'')+'>'+o[1]+'</option>').join("")+'</select>'+
+      '<select class="inp" data-act="pavail" style="width:auto">'+[["all","Everyone"],["free","Free agents"],["rostered","On a squad"]].map(o=>'<option value="'+o[0]+'"'+(f.avail===o[0]?' selected':'')+'>'+o[1]+'</option>').join("")+'</select>'+
+      '<select class="inp" data-act="psort" style="width:auto">'+[["fpts","Sort: total FP"],["fppg","Sort: FP per game"],["name","Sort: name"],["club","Sort: club"]].map(o=>'<option value="'+o[0]+'"'+(f.sort===o[0]?' selected':'')+'>'+o[1]+'</option>').join("")+'</select>'+
+      '<span class="spacer"></span><span class="pmeta num">'+list.length+' shown</span></div>'+
+    '<div class="card"><div class="tw" style="max-height:66vh;overflow-y:auto"><table><thead><tr>'+
+      '<th class="l">Player</th><th class="l">Status</th><th>GP</th><th>FP</th><th>FP/G</th>'+
+      ["pts","reb","ast","stl","blk","to","tpm"].map(k=>'<th>'+STAT_LABEL[k]+'</th>').join("")+'<th></th></tr></thead><tbody>'+
+      list.slice(0,400).map(p=>{
+        const own=ownerOf(p.id), s=seasonTotals(p.id);
+        const canSign = t && !own && S.league.status==="active";
+        return '<tr><td class="l">'+pcell(p)+'</td>'+
+          '<td class="l pmeta">'+(own?esc(own.name):'<span style="color:var(--win)">Free agent</span>')+'</td>'+
+          '<td class="num">'+s.gp+'</td><td class="num"><b>'+s.fp.toFixed(1)+'</b></td><td class="num">'+s.fppg.toFixed(1)+'</td>'+
+          ["pts","reb","ast","stl","blk","to","tpm"].map(k=>'<td class="num">'+s[k]+'</td>').join("")+
+          '<td>'+(drafting ? (canPick && !own ? '<button class="btn sm pri" data-act="pick" data-p="'+p.id+'">Draft</button>':'')
+                : canSign ? '<button class="btn sm" data-act="add" data-p="'+p.id+'">Sign</button>'
+                : (own && t && own.id===t.id ? '<button class="btn sm gh" data-act="drop" data-p="'+p.id+'">Release</button>':''))+'</td></tr>';
+      }).join("")+'</tbody></table></div></div>'+
+    (list.length>400?'<p class="pmeta" style="margin-top:8px">Showing the first 400 — narrow the filters for the rest.</p>':'');
+}
+
+/* ---------------- Trades ---------------- */
+function viewTrades(){
+  const t = myTeam();
+  const inbox = S.trades.filter(x=>x.status==="pending" && t && x.to===t.id);
+  const out = S.trades.filter(x=>x.status==="pending" && t && x.from===t.id);
+  const done = S.trades.filter(x=>x.status!=="pending").sort((a,b)=>b.at-a.at).slice(0,10);
+  const card = tr => {
+    const A=teamById(tr.from), B=teamById(tr.to);
+    return '<div class="card" style="margin-bottom:10px"><div class="cb">'+
+      '<div class="row" style="align-items:flex-start;gap:18px">'+
+        '<div style="flex:1;min-width:180px"><div class="eyebrow">'+esc(A?A.name:"?")+' sends</div>'+tr.give.map(p=>'<div style="padding:3px 0">'+pcell(P[p])+'</div>').join("")+'</div>'+
+        '<div style="align-self:center;font-size:20px;color:var(--faint)">⇄</div>'+
+        '<div style="flex:1;min-width:180px"><div class="eyebrow">'+esc(B?B.name:"?")+' sends</div>'+tr.get.map(p=>'<div style="padding:3px 0">'+pcell(P[p])+'</div>').join("")+'</div>'+
+      '</div><div class="row" style="margin-top:12px"><span class="pill'+(tr.status==="accepted"?" win":tr.status==="declined"?" loss":"")+'">'+tr.status+'</span>'+
+      '<span class="pmeta">'+fmtTime(tr.at)+'</span><span class="spacer"></span>'+
+      (tr.status==="pending" && t && tr.to===t.id ? '<button class="btn sm pri" data-act="tradeyes" data-t="'+tr.id+'">Accept</button><button class="btn sm dan" data-act="tradeno" data-t="'+tr.id+'">Decline</button>':'')+
+      '</div></div></div>';
+  };
+  return '<div class="pagehead"><h2>Trades</h2><p>Swap players straight up. Points already banked don’t move — they stay with the squad that owned the player at the time.</p></div>'+
+    '<div class="row" style="margin-bottom:14px"><button class="btn pri" data-act="newtrade"'+(t?"":" disabled")+'>Propose a trade</button>'+(t?'':'<span class="pmeta">Claim a squad first.</span>')+'</div>'+
+    (inbox.length?'<h3 class="eyebrow" style="margin-bottom:8px">Offers to you</h3>'+inbox.map(card).join(""):'')+
+    (out.length?'<h3 class="eyebrow" style="margin:16px 0 8px">Your offers</h3>'+out.map(card).join(""):'')+
+    (done.length?'<h3 class="eyebrow" style="margin:16px 0 8px">Settled</h3>'+done.map(card).join(""):'')+
+    (!inbox.length&&!out.length&&!done.length?'<div class="card"><div class="empty"><b>No offers yet</b>Nothing on the table.</div></div>':'');
+}
+
+/* ---------------- Draft Room ---------------- */
+function viewDraft(){
+  const d = S.draft;
+  if(!d || !d.started){
+    const open = S.teams.filter(t=>!t.ownerId).length;
+    return '<div class="pagehead"><h2>Draft Room</h2><p>Snake draft — the order reverses every round, '+S.league.rosterSize+' rounds to fill each squad. No positional requirements: draft whoever you like.</p></div>'+
+      '<div class="card"><div class="cb">'+
+      '<div class="row" style="margin-bottom:12px"><span class="pill">'+S.teams.length+' squads</span><span class="pill">'+(S.teams.length*S.league.rosterSize)+' picks</span>'+
+      (open?'<span class="pill loss">'+open+' slot'+(open>1?'s':'')+' unclaimed</span>':'<span class="pill win">Everyone in</span>')+'</div>'+
+      '<div class="tw"><table><thead><tr><th class="l">Order</th><th class="l">Squad</th><th class="l">Manager</th></tr></thead><tbody>'+
+      S.teams.map((t,i)=>'<tr><td class="l num">'+(i+1)+'</td><td class="l">'+esc(t.name)+'</td><td class="l pmeta">'+esc(t.manager||"— open —")+'</td></tr>').join("")+
+      '</tbody></table></div>'+
+      (isCommish()?'<div class="row" style="margin-top:14px"><button class="btn pri" data-act="startdraft">Start draft (current order)</button><button class="btn" data-act="startdraftrand">Randomise order &amp; start</button></div>'
+                  :'<p class="pmeta" style="margin-top:12px">Waiting on the commissioner to start.</p>')+
+      '</div></div>';
+  }
+  const total = d.order.length*d.rounds, done = d.picks.length;
+  const complete = done>=total;
+  const onTeam = complete? null : teamById(draftSlotFor(done, d.order));
+  const t = myTeam(), yours = onTeam && t && onTeam.id===t.id;
+  const rnd = Math.min(d.rounds, Math.floor(done/d.order.length)+1);
+  const pick = complete? d.order.length : done % d.order.length + 1;
+
+  const head = '<div class="clock'+(yours?" you":"")+'">'+
+    (onTeam? '<div><div class="eyebrow">On the clock</div><div style="font-family:var(--f-disp);font-size:26px;text-transform:uppercase">'+esc(onTeam.name)+'</div><div class="pmeta">'+esc(onTeam.manager||"unclaimed")+'</div></div>'
+           : '<div><div class="eyebrow">Draft complete</div><div style="font-family:var(--f-disp);font-size:26px;text-transform:uppercase">All picks in</div></div>')+
+    '<span class="spacer"></span>'+
+    '<div style="text-align:right"><div class="eyebrow">'+(complete?'All '+d.rounds+' rounds done':'Round '+rnd+' · Pick '+pick)+'</div><div class="t">'+done+'<span style="color:var(--faint)">/'+total+'</span></div></div>'+
+    (onTeam && (yours||isCommish()) ? '<button class="btn pri" data-nav="players">Pick a player</button><button class="btn" data-act="autopick">Auto-pick</button>':'')+
+  '</div>';
+
+  const taken = rosteredIds();
+  const best = PLAYERS.filter(p=>!taken.has(p.id)).sort((a,b)=> seasonTotals(b.id).fp-seasonTotals(a.id).fp || a.rank-b.rank).slice(0,14);
+  const board = '<div class="card"><div class="ch"><h3>Draft board</h3></div><div class="cb"><div class="board">'+
+    d.order.map((tid,ci)=>{
+      const tm = teamById(tid); let cells="";
+      for(let rr=0; rr<d.rounds; rr++){
+        const idx = rr%2===0 ? rr*d.order.length+ci : rr*d.order.length+(d.order.length-1-ci);
+        const pk = d.picks[idx], p = pk?P[pk.p]:null;
+        cells += '<div class="bcell'+(idx===done?" now":"")+'"><div class="pk">'+(rr+1)+'.'+((idx%d.order.length)+1)+'</div>'+
+          (p? stripe(p.club)+'<span style="font-weight:600">'+esc(p.name)+'</span>' : (idx===done?'<span class="pmeta">on the clock</span>':''))+'</div>';
+      }
+      return '<div class="bcol"><div class="bh">'+esc(tm?tm.name:tid)+'</div>'+cells+'</div>';
+    }).join("")+'</div></div></div>';
+  const bb = '<div class="card"><div class="ch"><h3>Best available</h3></div><div class="tw"><table><thead><tr><th class="l">Player</th><th>FP</th><th></th></tr></thead><tbody>'+
+    best.map(p=>'<tr><td class="l">'+pcell(p)+'</td><td class="num">'+seasonTotals(p.id).fp.toFixed(1)+'</td>'+
+      '<td>'+((yours||isCommish()) && onTeam ? '<button class="btn sm pri" data-act="pick" data-p="'+p.id+'">Draft</button>':'')+'</td></tr>').join("")+
+    '</tbody></table></div></div>';
+  return '<div class="pagehead"><h2>Draft Room</h2><p>Snake order — it reverses each round. Only the manager on the clock, or the commissioner, can submit a pick.</p></div>'+
+    head+'<div class="draftgrid" style="margin-top:14px">'+board+bb+'</div>';
+}
+
+/* ---------------- Box Scores ---------------- */
+function viewStats(){
+  const r = S.statRound, cur = S.stats[r] || {lines:{}};
+  const entered = Object.keys(cur.lines||{}).length;
+  const taken = rosteredIds(), f = S.playerFilter;
+  let list = PLAYERS.filter(p=> S.statOnlyRostered ? taken.has(p.id) : true);
+  if(f.q){ const q=f.q.toLowerCase(); list=list.filter(p=>p.name.toLowerCase().includes(q)||CLUB[p.club].name.toLowerCase().includes(q)); }
+  if(f.club) list=list.filter(p=>p.club===f.club);
+  list.sort((a,b)=> a.club.localeCompare(b.club)||a.name.localeCompare(b.name));
+  return '<div class="pagehead"><h2>Box Scores</h2><p>Where the real numbers come in. Enter each player’s line for the round, or paste a CSV. Every total on the site is calculated from this.</p></div>'+
+    '<div class="note" style="margin-bottom:14px"><b>Why manual?</b> The NBL’s official statistics are licensed, with no free public feed to read from. Rather than invent numbers, this is the one thing a human supplies. Copy them from the NBL match centre after each round.</div>'+
+    '<div class="row" style="margin-bottom:12px">'+
+      '<label class="fl" style="margin:0">Round</label>'+
+      '<select class="inp" data-act="statround" style="width:auto">'+Array.from({length:TOTAL_ROUNDS},(_,i)=>'<option value="'+(i+1)+'"'+(i+1===r?' selected':'')+'>Round '+(i+1)+(S.stats[i+1]&&Object.keys(S.stats[i+1].lines||{}).length?' · '+Object.keys(S.stats[i+1].lines).length+' lines':'')+'</option>').join("")+'</select>'+
+      '<span class="pill">'+entered+' line'+(entered===1?'':'s')+' entered</span>'+
+      '<label class="row" style="gap:6px;font-size:13px"><input type="checkbox" data-act="onlyrost"'+(S.statOnlyRostered?" checked":"")+'> Only drafted players</label>'+
+      '<span class="spacer"></span><button class="btn" data-act="csv">Paste CSV</button><button class="btn dan" data-act="clearround">Clear round</button></div>'+
+    '<div class="row" style="margin-bottom:10px">'+
+      '<input class="inp" data-fk="pq" data-act="pq" value="'+esc(f.q)+'" placeholder="Find a player" style="max-width:230px">'+
+      '<select class="inp" data-act="pclub" style="width:auto"><option value="">All clubs</option>'+CLUBS.map(c=>'<option value="'+c.id+'"'+(f.club===c.id?' selected':'')+'>'+c.name+'</option>').join("")+'</select></div>'+
+    '<div class="card"><div class="tw" style="max-height:64vh;overflow-y:auto"><table><thead><tr><th class="l">Player</th>'+
+      STAT_KEYS.map(k=>'<th>'+STAT_LABEL[k]+'</th>').join("")+'<th>FP</th></tr></thead><tbody>'+
+      list.slice(0,260).map(p=>{
+        const l=(cur.lines||{})[p.id]||{};
+        return '<tr><td class="l">'+pcell(p)+'</td>'+
+          STAT_KEYS.map(k=>'<td><input class="inp num" data-fk="st-'+p.id+'-'+k+'" data-stat="'+k+'" data-p="'+p.id+'" value="'+(l[k]!=null?l[k]:"")+'" inputmode="numeric" style="width:52px;padding:3px 5px;text-align:right"></td>').join("")+
+          '<td class="num"><b>'+(Object.keys(l).length?fpts(l,S.league.scoring).toFixed(1):"—")+'</b></td></tr>';
+      }).join("")+'</tbody></table></div></div>'+
+    (list.length>260?'<p class="pmeta" style="margin-top:8px">First 260 shown — filter to reach the rest.</p>':'');
+}
+
+/* ---------------- Settings ---------------- */
+function viewSettings(){
+  const L = S.league;
+  return '<div class="pagehead"><h2>League Settings</h2><p>Commissioner controls. Scoring and squad size are best locked in before the draft.</p></div>'+
+    '<div class="g2">'+
+    '<div class="card"><div class="ch"><h3>Basics</h3></div><div class="cb">'+
+      '<div class="field"><label class="fl">League name</label><input class="inp" data-fk="lname" data-act="lname" value="'+esc(L.name)+'"></div>'+
+      '<div class="field"><label class="fl">Join code</label><div class="row"><input class="inp mono" value="'+esc(S.leagueId)+'" readonly style="letter-spacing:.14em;max-width:150px"><button class="btn sm" data-act="copycode">Copy</button></div></div>'+
+      '<div class="field"><label class="fl">Current round</label><div class="row"><span class="big">'+L.currentRound+'</span>'+
+        '<button class="btn sm" data-act="nextround">Close Round '+L.currentRound+' &amp; move on</button></div>'+
+        '<p class="pmeta">Closing a round freezes who owned which player, so points already banked never move in a later trade.</p></div>'+
+      '<div class="field"><label class="fl">Squad size</label><div class="row"><span class="big">'+L.rosterSize+'</span>'+
+        (L.status==="predraft"?'<button class="btn sm" data-act="rsize" data-d="-1">−</button><button class="btn sm" data-act="rsize" data-d="1">+</button>':'<span class="pmeta">Locked once the draft starts.</span>')+'</div></div>'+
+      '<div class="field"><label class="fl">Status</label><span class="pill">'+L.status+'</span></div>'+
+    '</div></div>'+
+    '<div class="card"><div class="ch"><h3>Scoring</h3></div><div class="cb">'+
+      '<p class="pmeta" style="margin-top:0">Fantasy points per stat. Defaults match the standard American points-league settings.</p>'+
+      '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">'+
+      SCORE_ORDER.map(k=>'<div><label class="fl">'+STAT_LABEL[k]+'</label><input class="inp num" data-fk="sc-'+k+'" data-score="'+k+'" value="'+L.scoring[k]+'" style="padding:4px 7px"></div>').join("")+
+      '</div><div class="row" style="margin-top:12px"><button class="btn" data-act="resetscoring">Reset to defaults</button></div>'+
+    '</div></div>'+
+    '<div class="card"><div class="ch"><h3>Squads</h3></div><div class="cb"><div class="tw"><table>'+
+      '<thead><tr><th class="l">Squad</th><th class="l">Manager</th><th></th></tr></thead><tbody>'+
+      S.teams.map(t=>'<tr><td class="l">'+esc(t.name)+'</td><td class="l pmeta">'+esc(t.manager||"— open —")+'</td>'+
+        '<td>'+(t.ownerId?'<button class="btn sm gh" data-act="kick" data-t="'+t.id+'">Free the slot</button>':'')+'</td></tr>').join("")+
+      '</tbody></table></div>'+
+      (L.status==="predraft"?'<div class="row" style="margin-top:12px"><button class="btn sm" data-act="addteam">Add a squad</button></div>':'')+
+    '</div></div>'+
+    '<div class="card"><div class="ch"><h3>Sharing</h3></div><div class="cb">'+
+      '<p style="margin-top:0">Anyone with the site address and the code <b class="mono">'+esc(S.leagueId)+'</b> can claim an open squad. There are no passwords — this is built for a group of mates, not for keeping strangers out.</p>'+
+      '<p class="pmeta">Backend: '+(BACKEND==="firebase"?"Firebase (shared)":BACKEND==="claude"?"Claude artifact database (shared)":"local browser storage only")+'.</p>'+
+    '</div></div>'+
+    '</div>';
+}
+
+/* ---------------- Modals ---------------- */
+function renderModal(){
+  const m = S.modal;
+  const wrap = (title, body, foot, wide) =>
+    '<div class="veil" data-act="veil"><div class="modal'+(wide?" wide":"")+'" role="dialog" aria-modal="true">'+
+    '<div class="mh"><h3>'+title+'</h3><button class="btn sm gh" data-act="closemodal" aria-label="Close">✕</button></div>'+
+    '<div class="mb">'+body+'</div>'+(foot?'<div class="mf">'+foot+'</div>':'')+'</div></div>';
+
+  if(m.type==="newleague"){
+    return wrap("Create a league",
+      '<div class="field"><label class="fl">Your name</label><input class="inp" data-fk="nl-me" id="nl-me" value="'+esc(ME.name)+'" placeholder="Kai"></div>'+
+      '<div class="field"><label class="fl">League name</label><input class="inp" data-fk="nl-name" id="nl-name" placeholder="Thursday Night Hoops"></div>'+
+      '<div class="field"><label class="fl">Your squad name</label><input class="inp" data-fk="nl-team" id="nl-team" placeholder="Cotton Club"></div>'+
+      '<div class="row"><div class="field" style="flex:1"><label class="fl">Squads</label><select class="inp" id="nl-count">'+[4,6,8,10,12].map(n=>'<option'+(n===8?' selected':'')+'>'+n+'</option>').join("")+'</select></div>'+
+      '<div class="field" style="flex:1"><label class="fl">Players per squad</label><select class="inp" id="nl-size">'+[8,10,12,14].map(n=>'<option'+(n===DEFAULT_ROSTER_SIZE?' selected':'')+'>'+n+'</option>').join("")+'</select></div></div>'+
+      '<p class="pmeta">Every player on a squad scores every round — there is no bench and no lineup to set.</p>',
+      '<button class="btn" data-act="closemodal">Cancel</button><button class="btn pri" data-act="createleague">Create</button>');
+  }
+  if(m.type==="claim"){
+    const open = S.teams.filter(t=>!t.ownerId);
+    return wrap("Claim a squad",
+      '<div class="field"><label class="fl">Your name</label><input class="inp" data-fk="cl-me" id="cl-me" value="'+esc(ME.name)+'" placeholder="Kai"></div>'+
+      (open.length? '<div class="field"><label class="fl">Rename it (optional)</label><input class="inp" data-fk="cl-team" id="cl-team" placeholder="Leave blank to keep the slot name"></div>'+
+        '<div class="field"><label class="fl">Open slots</label>'+
+        open.map(t=>'<div class="slot" style="margin-bottom:6px"><div class="lbl">'+esc(t.id.replace("t",""))+'</div><div class="who"><b>'+esc(t.name)+'</b></div><button class="btn sm pri" data-act="doclaim" data-t="'+t.id+'">Take it</button></div>').join("")+'</div>'
+        : '<div class="empty"><b>All taken</b>Every slot in this league has a manager.</div>'),
+      '<button class="btn" data-act="closemodal">Close</button>');
+  }
+  if(m.type==="drop"){
+    const t = myTeam();
+    return wrap("Squad is full — release someone",
+      '<p class="pmeta" style="margin-top:0">Signing <b>'+esc(P[m.add].name)+'</b> means releasing one of these. Points they already banked stay with you.</p>'+
+      (t.roster||[]).map(pid=>'<div class="slot" style="margin-bottom:6px"><div class="lbl">'+(P[pid]?P[pid].pos:"")+'</div><div class="who">'+pcell(P[pid])+'</div><button class="btn sm dan" data-act="dodrop" data-p="'+pid+'">Release</button></div>').join(""),
+      '<button class="btn" data-act="closemodal">Cancel</button>');
+  }
+  if(m.type==="csv"){
+    return wrap("Paste a CSV of box scores",
+      '<p class="pmeta" style="margin-top:0">One row per player. A header row is optional; without one the column order is assumed to be:<br><code class="mono">player,'+STAT_KEYS.join(",")+'</code></p>'+
+      '<textarea class="inp mono" data-fk="csvbox" id="csvbox" rows="10" placeholder="player,min,pts,reb,ast,stl,blk,to,fgm,fga,ftm,fta,tpm&#10;Bryce Cotton,34,28,4,6,1,0,3,9,19,6,7,4"></textarea>'+
+      (m.report? '<div class="note" style="margin-top:10px">Imported '+m.report.ok+' line'+(m.report.ok===1?'':'s')+' into Round '+S.statRound+'.'+(m.report.miss.length?' Not matched to a player: '+esc(m.report.miss.slice(0,12).join(", "))+(m.report.miss.length>12?' …':''):'')+'</div>':''),
+      '<button class="btn" data-act="closemodal">Close</button><button class="btn pri" data-act="doimport">Import into Round '+S.statRound+'</button>', true);
+  }
+  if(m.type==="trade"){
+    const me = myTeam(), other = m.other?teamById(m.other):null;
+    const col = (t, chosen, key) => !t ? '' :
+      '<div style="flex:1;min-width:200px"><div class="eyebrow" style="margin-bottom:6px">'+esc(t.name)+'</div>'+
+      (t.roster||[]).map(pid=>'<label class="slot" style="margin-bottom:5px;cursor:pointer"><input type="checkbox" data-tsel="'+key+'" data-p="'+pid+'"'+(chosen.includes(pid)?" checked":"")+'><div class="who">'+pcell(P[pid])+'</div></label>').join("")+'</div>';
+    return wrap("Propose a trade",
+      '<div class="field"><label class="fl">Trade with</label><select class="inp" id="tradewith" data-act="tradewith"><option value="">Choose a squad…</option>'+
+        S.teams.filter(t=>me&&t.id!==me.id&&t.ownerId).map(t=>'<option value="'+t.id+'"'+(m.other===t.id?' selected':'')+'>'+esc(t.name)+' — '+esc(t.manager)+'</option>').join("")+'</select></div>'+
+      (other? '<div class="row" style="align-items:flex-start;gap:16px">'+col(me,m.give||[],"give")+col(other,m.get||[],"get")+'</div>' : '<p class="pmeta">Pick a squad to see their roster.</p>'),
+      '<button class="btn" data-act="closemodal">Cancel</button><button class="btn pri" data-act="sendtrade"'+(other?"":" disabled")+'>Send offer</button>', true);
+  }
+  if(m.type==="rename"){
+    const t = myTeam();
+    return wrap("Rename your squad",
+      '<div class="field"><label class="fl">Squad name</label><input class="inp" data-fk="rn" id="rn" value="'+esc(t.name)+'"></div>'+
+      '<div class="field"><label class="fl">Manager name</label><input class="inp" data-fk="rnm" id="rnm" value="'+esc(t.manager||ME.name)+'"></div>',
+      '<button class="btn" data-act="closemodal">Cancel</button><button class="btn pri" data-act="dorename">Save</button>');
+  }
+  if(m.type==="confirm"){
+    return wrap(esc(m.title), '<p style="margin:0">'+esc(m.body)+'</p>',
+      '<button class="btn" data-act="closemodal">Cancel</button><button class="btn dan" data-act="'+m.act+'">'+esc(m.ok)+'</button>');
+  }
+  return "";
+}
+
+/* ============================================================
+   EVENTS
+   ============================================================ */
+let wired = false;
+function wire(){
+  if(wired) return; wired = true;
+
+  document.addEventListener("click", async (e)=>{
+    const navEl = e.target.closest("[data-nav]");
+    if(navEl){ S.view=navEl.dataset.nav; S.modal=null; render(); return; }
+    const el = e.target.closest("[data-act]");
+    if(!el) return;
+    const a = el.dataset.act, pid = el.dataset.p, tid = el.dataset.t;
+    if(a==="veil"){ if(e.target===el){ S.modal=null; render(); } return; }
+    try{
+      switch(a){
+        case "closemodal": S.modal=null; render(); break;
+        case "theme": {
+          const cur = document.documentElement.getAttribute("data-theme");
+          const next = cur==="dark" ? "light" : cur==="light" ? "dark" : (matchMedia("(prefers-color-scheme: dark)").matches?"light":"dark");
+          document.documentElement.setAttribute("data-theme", next); LS.set("theme", next); break;
+        }
+        case "new-league": S.modal={type:"newleague"}; render(); break;
+        case "demo": loadDemo(); break;
+        case "join": await joinLeague(document.getElementById("joincode").value); break;
+        case "leave": LS.del("league"); unsubAll(); DEMO=false; S.league=null; S.leagueId=null; S.teams=[]; S.stats={}; S.draft=null; S.trades=[]; S.activity=[]; S.view="landing"; S.err=null; render(); break;
+        case "claim": S.modal={type:"claim"}; render(); break;
+        case "createleague": {
+          ME.name=(document.getElementById("nl-me").value||"").trim()||"Commissioner"; LS.set("me",ME);
+          const name=(document.getElementById("nl-name").value||"").trim()||"My NBL League";
+          const team=(document.getElementById("nl-team").value||"").trim();
+          const count=Number(document.getElementById("nl-count").value)||8;
+          const size=Number(document.getElementById("nl-size").value)||DEFAULT_ROSTER_SIZE;
+          S.modal=null; render();
+          const id = await createLeague({name, myTeam:team, teamCount:count, rosterSize:size, scoring:DEFAULT_SCORING});
+          toast("League created. Code: "+id,"good"); break;
+        }
+        case "doclaim": {
+          ME.name=(document.getElementById("cl-me").value||"").trim()||"Manager"; LS.set("me",ME);
+          const nmEl=document.getElementById("cl-team");
+          await claimTeam(tid, ((nmEl&&nmEl.value)||"").trim()); break;
+        }
+        case "startdraft": await startDraft(false); break;
+        case "startdraftrand": await startDraft(true); break;
+        case "autopick": await autopick(); break;
+        case "pick": await makePick(pid); break;
+        case "add": await addPlayer(pid); break;
+        case "dodrop": await addPlayer(S.modal.add, pid); break;
+        case "drop": S.modal={type:"confirm", title:"Release "+P[pid].name+"?", body:"They return to the free agent pool. Points they already banked stay on your season total.", ok:"Release", act:"confirmdrop", p:pid}; render(); break;
+        case "confirmdrop": { const q=S.modal.p; S.modal=null; await dropPlayer(q); break; }
+        case "renameteam": S.modal={type:"rename"}; render(); break;
+        case "dorename": { const t=myTeam(); ME.name=(document.getElementById("rnm").value||"").trim()||ME.name; LS.set("me",ME);
+          await saveTeam(t,{name:(document.getElementById("rn").value||"").trim()||t.name, manager:ME.name}); S.modal=null; render(); break; }
+        case "nextround": await advanceRound(); break;
+        case "csv": S.modal={type:"csv"}; render(); break;
+        case "doimport": { const rep=await importCSV(S.statRound, document.getElementById("csvbox").value); S.modal={type:"csv", report:rep}; render(); break; }
+        case "clearround": S.modal={type:"confirm", title:"Clear Round "+S.statRound+"?", body:"Every box score line entered for this round is deleted, and every squad's total is recalculated without it.", ok:"Clear", act:"confirmclear"}; render(); break;
+        case "confirmclear": { S.modal=null; S.stats[S.statRound]={lines:{}}; await store.doc(pathS(S.leagueId,S.statRound)).set({lines:{}}); render(); break; }
+        case "newtrade": S.modal={type:"trade", give:[], get:[]}; render(); break;
+        case "sendtrade": await proposeTrade(S.modal.other, S.modal.give, S.modal.get); break;
+        case "tradeyes": await respondTrade(S.trades.find(x=>x.id===tid), true); break;
+        case "tradeno": await respondTrade(S.trades.find(x=>x.id===tid), false); break;
+        case "copycode": try{ await navigator.clipboard.writeText(S.leagueId); toast("Code copied."); }catch(err){ toast("Copy didn't work — select it by hand.","bad"); } break;
+        case "resetscoring": await saveLeague({scoring:Object.assign({},DEFAULT_SCORING)}); toast("Scoring reset."); break;
+        case "rsize": { const n=Math.max(4, Math.min(16, S.league.rosterSize + Number(el.dataset.d)));
+          await saveLeague({rosterSize:n});
+          if(S.draft) { S.draft.rounds=n; await saveDraft(); } break; }
+        case "addteam": { const n=S.teams.length+1; const t={id:"t"+n, name:"Open Slot "+n, manager:"", ownerId:null, roster:[], rosters:{}};
+          await store.doc(pathT(S.leagueId)+"/"+t.id).set(t); await saveLeague({teamCount:n}); break; }
+        case "kick": { const t=teamById(tid); if(t){ S.modal={type:"confirm", title:"Free up "+t.name+"?", body:"The slot opens for someone else to claim. The roster and its points stay with the slot.", ok:"Free the slot", act:"confirmkick", t:tid}; render(); } break; }
+        case "confirmkick": { const t=teamById(S.modal.t); S.modal=null; if(t) await saveTeam(t,{ownerId:null, manager:""}); render(); break; }
+      }
+    }catch(err){ console.error(err); toast("That didn't go through: "+(err && err.message ? err.message : "unknown error"),"bad"); }
+  });
+
+  document.addEventListener("change", async (e)=>{
+    const el = e.target;
+    try{
+      if(el.dataset.stat){
+        const prev = (S.stats[S.statRound] && S.stats[S.statRound].lines && S.stats[S.statRound].lines[el.dataset.p]) || {};
+        const l = Object.assign({}, prev);
+        const v = el.value.trim();
+        if(v==="") delete l[el.dataset.stat]; else l[el.dataset.stat] = Number(v)||0;
+        await saveStatLine(S.statRound, el.dataset.p, l); return;
+      }
+      if(el.dataset.score){ const sc=Object.assign({}, S.league.scoring); sc[el.dataset.score]=Number(el.value)||0; await saveLeague({scoring:sc}); return; }
+      if(el.dataset.tsel){ const k=el.dataset.tsel, arr=(S.modal[k]||[]).slice(); const i=arr.indexOf(el.dataset.p);
+        if(el.checked && i<0) arr.push(el.dataset.p); else if(!el.checked && i>=0) arr.splice(i,1);
+        S.modal[k]=arr; return; }
+      const a = el.dataset.act;
+      if(a==="statround"){ S.statRound=Number(el.value); render(); }
+      if(a==="onlyrost"){ S.statOnlyRostered=el.checked; render(); }
+      if(a==="pclub"){ S.playerFilter.club=el.value; render(); }
+      if(a==="ppos"){ S.playerFilter.pos=el.value; render(); }
+      if(a==="pavail"){ S.playerFilter.avail=el.value; render(); }
+      if(a==="psort"){ S.playerFilter.sort=el.value; render(); }
+      if(a==="tradewith"){ S.modal.other=el.value; S.modal.give=[]; S.modal.get=[]; render(); }
+      if(a==="lname"){ await saveLeague({name: el.value.trim()||S.league.name}); }
+    }catch(err){ console.error(err); toast("Couldn't save that: "+(err&&err.message?err.message:"unknown error"),"bad"); }
+  });
+
+  document.addEventListener("input", (e)=>{ if(e.target.dataset.act==="pq"){ S.playerFilter.q=e.target.value; render(); } });
+  document.addEventListener("keydown",(e)=>{ if(e.key==="Escape" && S.modal){ S.modal=null; render(); } });
+}
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+async function boot(){
+  const th = LS.get("theme", null);
+  if(th) document.documentElement.setAttribute("data-theme", th);
+  wire();
+
+  /* pick a backend */
+  try{
+    const fb = window.__fbReady ? await window.__fbReady : null;
+    if(fb && fb.db){ FB = fb; BACKEND = "firebase"; }
+  }catch(e){ console.warn(e); }
+  if(BACKEND!=="firebase" && typeof window.claude!=="undefined" && window.claude.use){
+    try{ const d = await window.claude.use("db"); if(d){ CDB = d; BACKEND = "claude"; } }catch(e){}
+  }
+  S.noStore = (BACKEND==="memory");
+
+  if(S.noStore){
+    S.err = "No shared database is connected, so leagues can't be created or joined on this copy of the site.";
+    S.leagueId = null; render(); return;
+  }
+  if(S.leagueId){
+    try{
+      const snap = await store.doc(pathL(S.leagueId)).get();
+      if(snap.exists) subscribe(S.leagueId);
+      else { LS.del("league"); S.leagueId=null; }
+    }catch(e){ console.error(e); S.err="Couldn't reach the league database: "+(e.message||e.code||"unknown error"); S.leagueId=null; }
+  }
+  render();
+}
+if(document.readyState==="loading") document.addEventListener("DOMContentLoaded", boot);
+else boot();
+</script>
+</body>
+</html>
