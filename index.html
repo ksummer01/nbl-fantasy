@@ -21,13 +21,18 @@
      Instructions: see README.md
      ============================================================ -->
 <script>
-window.FIREBASE_CONFIG = {
-  apiKey: "AIzaSyD-your-real-key-here",
-  authDomain: "nbl-fantasy-1234.firebaseapp.com",
-  projectId: "nbl-fantasy-1234",
-  storageBucket: "nbl-fantasy-1234.firebasestorage.app",
-  messagingSenderId: "123456789012",
-  appId: "1:123456789012:web:abc123def456"
+/* Paste YOUR OWN values here, from the Firebase console:
+   gear icon > Project settings > scroll to "Your apps" > the </> web app.
+   Copy the six lines out of the firebaseConfig block it shows you.
+   Leave them empty and the site runs in local-only mode. */
+const firebaseConfig = {
+  apiKey: "AIzaSyDjFfDi5cdE7ViuvZBqoAZf817J1M9bW1s",
+  authDomain: "nbl-fantasy.firebaseapp.com",
+  projectId: "nbl-fantasy",
+  storageBucket: "nbl-fantasy.firebasestorage.app",
+  messagingSenderId: "786633244378",
+  appId: "1:786633244378:web:0509edadf8006d93d9afe3",
+  measurementId: "G-T045GZBGQM"
 };
 </script>
 
@@ -35,19 +40,25 @@ window.FIREBASE_CONFIG = {
 <script type="module">
 window.__fbReady = (async () => {
   const cfg = window.FIREBASE_CONFIG || {};
-  if (!cfg.projectId || !cfg.apiKey) return null;
+  const missing = ["apiKey","authDomain","projectId","appId"].filter(k => !cfg[k]);
+  if (missing.length) return { error: "not_configured", missing };
   const V = "12.18.0";
-  const [{ initializeApp }, fs, au] = await Promise.all([
-    import("https://www.gstatic.com/firebasejs/" + V + "/firebase-app.js"),
-    import("https://www.gstatic.com/firebasejs/" + V + "/firebase-firestore.js"),
-    import("https://www.gstatic.com/firebasejs/" + V + "/firebase-auth.js")
-  ]);
-  const app = initializeApp(cfg);
-  const db = fs.getFirestore(app);
-  try { await au.signInAnonymously(au.getAuth(app)); }
-  catch (e) { console.warn("Anonymous sign-in unavailable:", e && e.code); }
-  return { fs, db };
-})().catch(e => { console.error("Firebase failed to start:", e); return null; });
+  try {
+    const [{ initializeApp }, fs, au] = await Promise.all([
+      import("https://www.gstatic.com/firebasejs/" + V + "/firebase-app.js"),
+      import("https://www.gstatic.com/firebasejs/" + V + "/firebase-firestore.js"),
+      import("https://www.gstatic.com/firebasejs/" + V + "/firebase-auth.js")
+    ]);
+    const app = initializeApp(cfg);
+    const db = fs.getFirestore(app);
+    let authError = null;
+    try { await au.signInAnonymously(au.getAuth(app)); }
+    catch (e) { authError = (e && e.code) || String(e); console.warn("Anonymous sign-in failed:", authError); }
+    return { fs, db, authError };
+  } catch (e) {
+    return { error: "init_failed", detail: String((e && e.message) || e) };
+  }
+})().catch(e => ({ error: "init_failed", detail: String((e && e.message) || e) }));
 </script>
 <style>
 
@@ -423,10 +434,10 @@ if(!ME || !ME.id){ ME = {id: uid(12), name: ""}; LS.set("me", ME); }
    STORE — one surface, three backends:
      firebase  when window.FIREBASE_CONFIG is filled in
      claude    when running inside a Claude artifact
-     memory    otherwise (demo, and local-only fallback)
+     memory    otherwise (local-only fallback)
    ============================================================ */
 let BACKEND = "memory";          /* firebase | claude | memory */
-let FB = null, CDB = null, DEMO = false;
+let FB = null, CDB = null;
 const listeners = [];
 const mem = { docs:{}, subs:[] };
 
@@ -459,14 +470,21 @@ function memCol(path){
     }
   };
 }
+/* Firestore queues writes when it can't reach the server, so an await can
+   hang indefinitely. Every write gets a deadline so the UI always responds. */
+const WRITE_TIMEOUT_MS = 12000;
+function deadline(p, label){
+  return Promise.race([p, new Promise((_,rej)=>setTimeout(
+    ()=>rej({code:"timeout", message:label+" didn't reach the database in time"}), WRITE_TIMEOUT_MS))]);
+}
 function fbDoc(path){
   const fs = FB.fs, ref = fs.doc(FB.db, path);
   return {
     id: ref.id,
-    async get(){ const s = await fs.getDoc(ref); return {exists:s.exists(), data:()=>s.data()}; },
-    async set(v){ await fs.setDoc(ref, v); },
-    async update(v){ await fs.updateDoc(ref, v); },
-    async delete(){ await fs.deleteDoc(ref); },
+    async get(){ const s = await deadline(fs.getDoc(ref), "Read"); return {exists:s.exists(), data:()=>s.data()}; },
+    async set(v){ await deadline(fs.setDoc(ref, v), "Save"); },
+    async update(v){ await deadline(fs.updateDoc(ref, v), "Update"); },
+    async delete(){ await deadline(fs.deleteDoc(ref), "Delete"); },
     onSnapshot(next, err){ return fs.onSnapshot(ref, s=>next({exists:s.exists(), data:()=>s.data()}), e=>err&&err({code:e.code||"unavailable", message:e.message})); }
   };
 }
@@ -480,21 +498,19 @@ function fbCol(path){
 }
 const store = {
   doc(path){
-    if(DEMO) return memDoc(path);
     if(BACKEND==="firebase") return fbDoc(path);
     if(BACKEND==="claude") return CDB.doc(path);
     return memDoc(path);
   },
   col(path){
-    if(DEMO) return memCol(path);
     if(BACKEND==="firebase") return fbCol(path);
     if(BACKEND==="claude") return CDB.collection(path);
     return memCol(path);
   },
-  shared(){ return !DEMO && (BACKEND==="firebase" || BACKEND==="claude"); },
+  shared(){ return BACKEND==="firebase" || BACKEND==="claude"; },
   /* read-modify-write that is atomic where the backend supports it */
   async tx(path, mutate){
-    if(!DEMO && BACKEND==="firebase"){
+    if(BACKEND==="firebase"){
       const fs = FB.fs, ref = fs.doc(FB.db, path);
       return await fs.runTransaction(FB.db, async t=>{
         const s = await t.get(ref);
@@ -503,7 +519,7 @@ const store = {
         return next;
       });
     }
-    if(!DEMO && BACKEND==="claude"){
+    if(BACKEND==="claude"){
       const ref = CDB.doc(path);
       try{ const lease = await ref.acquire({holder:ME.id, ttlMs:6000}); if(lease && lease.acquired===false) return null; }catch(e){}
       const s = await ref.get();
@@ -843,59 +859,6 @@ async function advanceRound(){
 }
 
 /* ============================================================
-   DEMO LEAGUE — in memory, nothing saved, invented box scores.
-   ============================================================ */
-function rng(seed){ let s=seed>>>0; return ()=> (s=(s*1664525+1013904223)>>>0)/4294967296; }
-function loadDemo(){
-  DEMO = true; unsubAll(); mem.docs={}; mem.subs.length=0;
-  const names=["Cotton Club","Hobart Hornets","Wollongong Wreckers","Taipan Terrors","Bay City Ballers","Kingsford Kings","Ingles Disciples","Pinder's Posse"];
-  const mgrs=["You","Sam","Priya","Dec","Jules","Tam","Ollie","Nico"];
-  const teams = names.map((n,i)=>({id:"t"+(i+1), name:n, manager:mgrs[i], ownerId: i===0?ME.id:"demo"+i, roster:[], rosters:{}}));
-  const league = {id:"DEMO01", name:"The Demo Comp", season:SEASON, commissionerId:ME.id, commissionerName:"You",
-    teamCount:8, rosterSize:DEFAULT_ROSTER_SIZE, scoring:Object.assign({},DEFAULT_SCORING),
-    status:"active", currentRound:5, createdAt:Date.now(), demo:true};
-  S.league = league; S.teams = teams; S.leagueId="DEMO01";
-
-  const r = rng(20260919);
-  const pool = PLAYERS.slice().sort((a,b)=> (a.posOk?0:1)-(b.posOk?0:1) || r()-0.5);
-  const order = teams.map(t=>t.id), picks=[];
-  for(let k=0;k<order.length*league.rosterSize;k++){
-    const tid = draftSlotFor(k, order), t = teams.find(x=>x.id===tid);
-    const p = pool.shift(); if(!p) break;
-    t.roster.push(p.id); picks.push({p:p.id, team:tid, at:Date.now()});
-  }
-  S.draft = {started:true, order, picks, rounds:league.rosterSize};
-
-  const q = rng(77), tier={};
-  PLAYERS.forEach(p=> tier[p.id] = 0.35 + 0.9*Math.pow(q(),0.8));
-  S.stats = {};
-  for(let rr=1; rr<=5; rr++){
-    const lines={};
-    PLAYERS.forEach(p=>{
-      if(q()<0.10) return;
-      const w=tier[p.id], big=p.pos==="C", g=p.pos==="G";
-      const mn=Math.round(10+22*w+q()*8);
-      const fga=Math.max(1,Math.round((3+11*w)*(0.75+q()*0.5)));
-      const fgm=Math.round(fga*(0.36+q()*0.22));
-      const tpm=g?Math.round(fgm*(0.25+q()*0.35)):Math.round(fgm*(q()*0.22));
-      const fta=Math.round((1+4*w)*q()*1.4), ftm=Math.round(fta*(0.6+q()*0.35));
-      lines[p.id]={min:mn, pts:fgm*2+tpm+ftm, reb:Math.round((big?4:1.5)+6*w*q()*1.5),
-        ast:Math.round((g?2:0.7)+5*w*q()), stl:q()<0.55?Math.round(q()*2.4):0,
-        blk: big&&q()<0.55?Math.round(q()*2.2):(q()<0.15?1:0), to:Math.round(q()*3.2), fgm,fga,ftm,fta,tpm};
-    });
-    S.stats[rr]={lines};
-  }
-  teams.forEach(t=>{ for(let rr=1;rr<=4;rr++) t.rosters[rr]=t.roster.slice(); });
-  S.activity=[
-    {t:Date.now()-3.4e6, by:"Dec", text:"signed Reyne Smith and released Brody Nunn"},
-    {t:Date.now()-1.1e7, by:"Priya", text:"offered a trade to Cotton Club"},
-    {t:Date.now()-2.4e7, by:"You", text:"closed Round 4 and moved to Round 5"}
-  ];
-  S.trades=[]; S.view="home"; S.err=null; S.statRound=5;
-  render();
-}
-
-/* ============================================================
    RENDER
    ============================================================ */
 const NAV = [
@@ -940,13 +903,32 @@ function render(){
   window.scrollTo(0,y);
 }
 
+function setupDiagnosis(){
+  const d = S.setup;
+  if(!d) return null;
+  if(d.error==="not_configured")
+    return {head:"Firebase isn\u2019t set up yet",
+            body:"The config block at the top of index.html is still empty ("+d.missing.join(", ")+"). Open index.html on GitHub, click the pencil icon, and paste in the six lines from your Firebase console: gear icon \u203a Project settings \u203a Your apps \u203a the </> web app."};
+  if(d.error==="init_failed")
+    return {head:"Firebase couldn\u2019t start", body:d.detail};
+  if(d.authError && String(d.authError).indexOf("api-key-not-valid")>=0)
+    return {head:"Firebase rejected your API key",
+            body:"The apiKey in index.html isn\u2019t a valid key for this project. Copy the whole firebaseConfig block again from the Firebase console \u2014 gear icon \u203a Project settings \u203a Your apps \u2014 and make sure you\u2019re copying your own values, not an example."};
+  if(d.code==="permission-denied")
+    return {head:"Firestore refused the request",
+            body:"The database is reachable but the rules rejected it. Enable Anonymous sign-in (Authentication \u203a Sign-in method) and publish the contents of firestore.rules under Firestore Database \u203a Rules."};
+  return {head:"Couldn\u2019t reach your Firestore database",
+          body:"Error code: "+(d.code||"unknown")+". The usual causes are a wrong projectId, or the Firestore database not having been created yet (Firestore Database \u203a Create database)."};
+}
+
 function renderLanding(){
   const counts = CLUBS.map(c=>({c, n:PLAYERS.filter(p=>p.club===c.id).length}));
+  const diag = setupDiagnosis();
   const modeNote = BACKEND==="firebase"
     ? '<span class="pill win"><span class="dot"></span>Shared league database connected</span>'
     : BACKEND==="claude"
       ? '<span class="pill win"><span class="dot"></span>Connected</span>'
-      : '<span class="pill loss"><span class="dot"></span>No database — local only</span>';
+      : '<span class="pill loss"><span class="dot"></span>Not connected — local only</span>';
   return '<div class="land">'+
     '<div class="row" style="gap:9px;margin-bottom:26px"><span class="ball"></span>'+
       '<div><div style="font-family:var(--f-disp);font-size:21px;text-transform:uppercase;letter-spacing:.03em;line-height:1">Hoop Ladder</div>'+
@@ -967,9 +949,10 @@ function renderLanding(){
       '<div class="opt"><h3>Join with a code</h3><p>Got a code from your commissioner? Drop it in and claim one of the open squad slots.</p>'+
         '<div class="row"><input class="inp" id="joincode" data-fk="joincode" placeholder="e.g. 7K2M9Q" maxlength="6" style="text-transform:uppercase;font-family:var(--f-mono);letter-spacing:.12em">'+
         '<button class="btn" data-act="join"'+(S.noStore?' disabled':'')+'>Join</button></div></div>'+
-      '<div class="opt"><h3>Take a look first</h3><p>An eight-squad league five rounds in, running on invented box scores, so you can click through everything.</p><button class="btn" data-act="demo">Open demo league</button></div>'+
     '</div>'+
-    (S.noStore ? '<div class="note" style="margin-top:22px;border-color:var(--loss)"><b>No database connected.</b> Leagues can’t be created or shared until Firebase is set up — see the setup steps in README.md. The demo works regardless.</div>' : '')+
+    (diag ? '<div class="note" style="margin-top:22px;border-color:var(--loss);background:color-mix(in srgb,var(--loss) 8%, transparent)">'+
+      '<b>'+esc(diag.head)+'.</b> '+esc(diag.body)+
+      '<div class="pmeta" style="margin-top:8px">Until this is fixed, Create and Join stay switched off \u2014 anything you made would vanish on reload.</div></div>' : '')+
     '<div class="note" style="margin-top:18px"><b>How the numbers get in:</b> the NBL has no free public statistics feed, so this site does not pull live box scores. After each round the commissioner enters the numbers — typed in, or pasted as CSV — and every total on the site is calculated from those.</div>'+
     '<p class="pmeta" style="margin-top:14px;max-width:74ch">Rosters compiled September 2026 from the ten clubs’ own squad pages. Players whose listed position could not be confirmed show a <span class="pos unk">?</span>. Positions are shown for information only — there are no positional requirements in this format.</p>'+
   '</div>';
@@ -996,8 +979,7 @@ function renderTop(){
   const row = t ? leaderboard().find(r=>r.team.id===t.id) : null;
   return '<div class="topbar">'+
     '<span class="lg">'+esc(S.league.name)+'</span>'+
-    (S.league.demo ? '<span class="pill live"><span class="dot"></span>Demo — nothing is saved</span>'
-      : '<span class="pill">Code <b class="mono" style="letter-spacing:.1em">'+esc(S.leagueId)+'</b></span>')+
+    '<span class="pill">Code <b class="mono" style="letter-spacing:.1em">'+esc(S.leagueId)+'</b></span>'+
     '<span class="sep"></span>'+
     '<span class="rnd eyebrow">Round <b>'+S.league.currentRound+'</b> of '+TOTAL_ROUNDS+'</span>'+
     '<span class="spacer"></span>'+
@@ -1034,12 +1016,10 @@ function viewHome(){
      : S.league.status==="drafting" ? "The draft is live."
      : "Season-long total points — Round "+S.league.currentRound+" of "+TOTAL_ROUNDS+".")+'</p></div>';
 
-  if(S.league.demo) out += '<div class="note" style="margin-bottom:14px"><b>This is the demo league.</b> The eight squads, their rosters and every box score are invented so you can see the site working. Nothing is saved, and none of these numbers are real NBL results.</div>';
-
   if(S.league.status==="predraft"){
     out += '<div class="card" style="margin-bottom:14px"><div class="ch"><h3>Getting started</h3></div><div class="cb">'+
       '<ol style="margin:0;padding-left:20px;line-height:1.9">'+
-      '<li>Send this code to your league: <b class="mono" style="letter-spacing:.12em;font-size:16px">'+esc(S.leagueId)+'</b>'+(S.league.demo?' <span class="pmeta">(demo — not a real code)</span>':'')+'</li>'+
+      '<li>Send this code to your league: <b class="mono" style="letter-spacing:.12em;font-size:16px">'+esc(S.leagueId)+'</b></li>'+
       '<li>'+(open? open+' squad slot'+(open>1?'s':'')+' still open.' : 'All squad slots are claimed.')+'</li>'+
       '<li>'+(isCommish()?'You’re the commissioner — open the draft when everyone’s in.':'Waiting on the commissioner to open the draft.')+'</li>'+
       '</ol>'+(isCommish()?'<div class="row" style="margin-top:12px"><button class="btn pri" data-nav="draft">Set up the draft</button></div>':'')+
@@ -1420,9 +1400,8 @@ function wire(){
           document.documentElement.setAttribute("data-theme", next); LS.set("theme", next); break;
         }
         case "new-league": S.modal={type:"newleague"}; render(); break;
-        case "demo": loadDemo(); break;
         case "join": await joinLeague(document.getElementById("joincode").value); break;
-        case "leave": LS.del("league"); unsubAll(); DEMO=false; S.league=null; S.leagueId=null; S.teams=[]; S.stats={}; S.draft=null; S.trades=[]; S.activity=[]; S.view="landing"; S.err=null; render(); break;
+        case "leave": LS.del("league"); unsubAll(); S.league=null; S.leagueId=null; S.teams=[]; S.stats={}; S.draft=null; S.trades=[]; S.activity=[]; S.view="landing"; S.err=null; render(); break;
         case "claim": S.modal={type:"claim"}; render(); break;
         case "createleague": {
           ME.name=(document.getElementById("nl-me").value||"").trim()||"Commissioner"; LS.set("me",ME);
@@ -1511,19 +1490,30 @@ async function boot(){
   wire();
 
   /* pick a backend */
-  try{
-    const fb = window.__fbReady ? await window.__fbReady : null;
-    if(fb && fb.db){ FB = fb; BACKEND = "firebase"; }
-  }catch(e){ console.warn(e); }
+  let fb = null;
+  try{ fb = window.__fbReady ? await window.__fbReady : null; }catch(e){ console.warn(e); }
+  if(fb && fb.db){ FB = fb; BACKEND = "firebase"; S.authError = fb.authError || null; }
+  else if(fb && fb.error){ S.setup = fb; }
+
   if(BACKEND!=="firebase" && typeof window.claude!=="undefined" && window.claude.use){
     try{ const d = await window.claude.use("db"); if(d){ CDB = d; BACKEND = "claude"; } }catch(e){}
   }
-  S.noStore = (BACKEND==="memory");
 
-  if(S.noStore){
-    S.err = "No shared database is connected, so leagues can't be created or joined on this copy of the site.";
-    S.leagueId = null; render(); return;
+  /* Starting the SDK proves nothing - it succeeds even with a bad key.
+     Do one real read before claiming the database is connected. */
+  if(BACKEND==="firebase"){
+    render();
+    const probe = await Promise.race([
+      store.doc("leagues/__connection_probe").get().then(()=>({ok:true}), e=>({ok:false, code:(e&&e.code)||"error"})),
+      sleep(10000).then(()=>({ok:false, code:"timeout"}))
+    ]);
+    if(!probe.ok){
+      BACKEND = "memory"; FB = null;
+      S.setup = {error:"unreachable", code:probe.code, authError:S.authError};
+    }
   }
+  S.noStore = (BACKEND==="memory");
+  if(S.noStore){ S.leagueId = null; }
   if(S.leagueId){
     try{
       const snap = await store.doc(pathL(S.leagueId)).get();
