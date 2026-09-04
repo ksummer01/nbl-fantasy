@@ -903,7 +903,7 @@ function render(){
   const y = window.scrollY;
   const fk = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.fk : null;
   const caret = document.activeElement && document.activeElement.selectionStart;
-  if(!S.league) app.innerHTML = renderLanding();
+  if(!S.league) app.innerHTML = renderLanding() + (S.modal?renderModal():"");
   else app.innerHTML = '<div class="shell">'+renderRail()+'<div class="main">'+renderTop()+'<div class="page">'+renderView()+'</div></div></div>'+renderTabbar()+(S.modal?renderModal():"");
   wire();
   if(fk){ const el=document.querySelector('[data-fk="'+fk+'"]'); if(el){ el.focus(); try{ if(caret!=null) el.setSelectionRange(caret,caret); }catch(e){} } }
