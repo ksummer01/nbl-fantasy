@@ -20,23 +20,29 @@
      person's league will live only in their own browser.
      Instructions: see README.md
      ============================================================ -->
-<script>
-/* Paste YOUR OWN values here, from the Firebase console:
-   gear icon > Project settings > scroll to "Your apps" > the </> web app.
-   Copy the six lines out of the firebaseConfig block it shows you.
-   Leave them empty and the site runs in local-only mode. */
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const firebaseConfig = {
-  apiKey: "AIzaSyDjFfDi5cdE7ViuvZBqoAZf817J1M9bW1s",
-  authDomain: "nbl-fantasy.firebaseapp.com",
-  projectId: "nbl-fantasy",
-  storageBucket: "nbl-fantasy.firebasestorage.app",
-  messagingSenderId: "786633244378",
-  appId: "1:786633244378:web:0509edadf8006d93d9afe3",
-  measurementId: "G-T045GZBGQM"
-};
-</script>
+<script type="module">
+  // Import the functions you need from the SDKs you need
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
+  import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-analytics.js";
+  // TODO: Add SDKs for Firebase products that you want to use
+  // https://firebase.google.com/docs/web/setup#available-libraries
 
+  // Your web app's Firebase configuration
+  // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+  const firebaseConfig = {
+    apiKey: "AIzaSyDjFfDi5cdE7ViuvZBqoAZf817J1M9bW1s",
+    authDomain: "nbl-fantasy.firebaseapp.com",
+    projectId: "nbl-fantasy",
+    storageBucket: "nbl-fantasy.firebasestorage.app",
+    messagingSenderId: "786633244378",
+    appId: "1:786633244378:web:0729e46eca9b5126d9afe3",
+    measurementId: "G-TL5DVEDCXV"
+  };
+
+  // Initialize Firebase
+  const app = initializeApp(firebaseConfig);
+  const analytics = getAnalytics(app);
+</script>
 <!-- Loads Firebase only when a config is present. Never blocks the page. -->
 <script type="module">
 window.__fbReady = (async () => {
