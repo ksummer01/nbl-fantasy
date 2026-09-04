@@ -654,6 +654,10 @@ const S = {
 const myTeam = () => S.teams.find(t=>t.ownerId===ME.id) || null;
 const isCommish = () => !!S.league && S.league.commissionerId === ME.id;
 const teamById = id => S.teams.find(t=>t.id===id) || null;
+/* A short, stable fingerprint of a Google account id. Two devices showing the
+   same code are the same account; different codes mean different accounts,
+   which is the usual reason a squad "disappears" on a second device. */
+const acctTag = id => id ? String(id).replace(/[^A-Za-z0-9]/g,"").slice(0,6).toUpperCase() : "\u2014";
 function initials(){
   const n = (S.user && S.user.name) || ME.name || "";
   const parts = String(n).trim().split(/\s+/).filter(Boolean);
@@ -1575,9 +1579,11 @@ function renderModal(){
     const others = (S.myLeagues||[]);
     return wrap("Your account",
       (S.user
-        ? '<div class="slot" style="grid-template-columns:1fr auto;margin-bottom:14px"><div><b>'+esc(S.user.name)+'</b>'+
-            (S.user.email?'<div class="pmeta">'+esc(S.user.email)+'</div>':'')+'</div>'+
-          '<button class="btn sm dan" data-act="signout">Sign out</button></div>'
+        ? '<div class="slot" style="grid-template-columns:1fr auto;margin-bottom:6px"><div><b>'+esc(S.user.name)+'</b>'+
+            (S.user.email?'<div class="pmeta">'+esc(S.user.email)+'</div>':'')+
+            '<div class="pmeta">Account <b class="mono">'+acctTag(ME.id)+'</b></div></div>'+
+          '<button class="btn sm dan" data-act="signout">Sign out</button></div>'+
+          '<p class="pmeta" style="margin:0 0 14px">Your squads belong to this account code. If your phone and your laptop show different codes here, they are signed in to different Google accounts \u2014 that is what makes a squad look missing on one of them.</p>'
         : '<div class="note" style="margin-bottom:14px">Not signed in.</div>')+
       '<div class="fl" style="margin-bottom:6px">Your leagues</div>'+
       (others.length
@@ -1603,9 +1609,24 @@ function renderModal(){
       '<button class="btn" data-act="closemodal">Close</button>');
   }
   if(m.type==="claim"){
-    const open = S.teams.filter(t=>!t.ownerId);
+    const open  = S.teams.filter(t=>!t.ownerId);
+    const taken = S.teams.filter(t=>t.ownerId);
+    /* Same person, different Google account is the usual cause of "it wants me
+       to claim a squad again". Say so, and show the evidence side by side. */
+    const myName = (S.user && S.user.name) || ME.name || "";
+    const lookalike = taken.find(t => t.manager && myName && t.manager.trim().toLowerCase() === myName.trim().toLowerCase());
     return wrap("Claim a squad",
-      '<div class="field"><label class="fl">Your name</label><input class="inp" data-fk="cl-me" id="cl-me" value="'+esc(ME.name || (S.user?S.user.name:""))+'" placeholder="Kai"></div>'+
+      '<div class="note" style="margin-top:0">You are signed in as <b>'+esc((S.user&&S.user.email)||myName||"?")+'</b>, account <b class="mono">'+acctTag(ME.id)+'</b>. Squads belong to the account code, not to the device.</div>'+
+      (lookalike
+        ? '<div class="note" style="margin-top:10px;border-color:var(--loss);background:color-mix(in srgb,var(--loss) 8%, transparent)">'+
+            '<b>'+esc(lookalike.name)+'</b> is already managed by <b>'+esc(lookalike.manager)+'</b> under account <b class="mono">'+acctTag(lookalike.ownerId)+'</b> \u2014 a different account from the one you are on now. '+
+            'If that is you, do not claim a second squad: sign out here and sign back in with the Google account whose code matches, or ask the commissioner to free that slot in Settings.</div>'
+        : '')+
+      (taken.length
+        ? '<details style="margin-top:10px"><summary class="pmeta" style="cursor:pointer">Who owns what ('+taken.length+' claimed)</summary>'+
+          '<div style="margin-top:8px">'+taken.map(t=>'<div class="slot" style="grid-template-columns:1fr auto;margin-bottom:6px"><div><b>'+esc(t.name)+'</b><div class="pmeta">'+esc(t.manager||"\u2014")+'</div></div><span class="pill mono">'+acctTag(t.ownerId)+'</span></div>').join("")+'</div></details>'
+        : '')+
+      '<div class="field" style="margin-top:14px"><label class="fl">Your name</label><input class="inp" data-fk="cl-me" id="cl-me" value="'+esc(ME.name || (S.user?S.user.name:""))+'" placeholder="Kai"></div>'+
       (open.length? '<div class="field"><label class="fl">Rename it (optional)</label><input class="inp" data-fk="cl-team" id="cl-team" placeholder="Leave blank to keep the slot name"></div>'+
         '<div class="field"><label class="fl">Open slots</label>'+
         open.map(t=>'<div class="slot" style="margin-bottom:6px"><div class="lbl">'+esc(t.id.replace("t",""))+'</div><div class="who"><b>'+esc(t.name)+'</b></div><button class="btn sm pri" data-act="doclaim" data-t="'+t.id+'">Take it</button></div>').join("")+'</div>'
