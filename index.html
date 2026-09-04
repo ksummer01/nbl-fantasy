@@ -51,17 +51,25 @@ window.__fbReady = (async () => {
   if (missing.length) return { error: "not_configured", missing };
   const V = "12.18.0";
   try {
-    const [{ initializeApp }, fs, au] = await Promise.all([
+    const [appMod, fs, au] = await Promise.all([
       import("https://www.gstatic.com/firebasejs/" + V + "/firebase-app.js"),
       import("https://www.gstatic.com/firebasejs/" + V + "/firebase-firestore.js"),
       import("https://www.gstatic.com/firebasejs/" + V + "/firebase-auth.js")
     ]);
-    const app = initializeApp(cfg);
+    /* the config snippet above already created the default app - reuse it */
+    const app = appMod.getApps().length ? appMod.getApp() : appMod.initializeApp(cfg);
     const db = fs.getFirestore(app);
-    let authError = null;
-    try { await au.signInAnonymously(au.getAuth(app)); }
-    catch (e) { authError = (e && e.code) || String(e); console.warn("Anonymous sign-in failed:", authError); }
-    return { fs, db, authError };
+    const auth = au.getAuth(app);
+    const provider = new au.GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: "select_account" });
+    /* Popup, not redirect: this site is not on Firebase Hosting, so the redirect
+       flow needs a cross-site iframe that Safari, Firefox and Chrome all block. */
+    const api = {
+      onChange: (cb) => au.onAuthStateChanged(auth, cb),
+      signIn:   () => au.signInWithPopup(auth, provider),
+      signOut:  () => au.signOut(auth)
+    };
+    return { fs, db, auth, api };
   } catch (e) {
     return { error: "init_failed", detail: String((e && e.message) || e) };
   }
@@ -434,8 +442,12 @@ const LS = {
   set(k,v){ try{ localStorage.setItem("nblf."+k, JSON.stringify(v)); }catch(e){} },
   del(k){ try{ localStorage.removeItem("nblf."+k); }catch(e){} }
 };
-let ME = LS.get("me", null);
-if(!ME || !ME.id){ ME = {id: uid(12), name: ""}; LS.set("me", ME); }
+/* Identity is the Google account id, so the same person is recognised on every
+   device. The stored copy only caches a display name between visits. */
+let ME = LS.get("me", null) || {id:null, name:""};
+if(typeof ME.name !== "string") ME.name = "";
+ME.id = null;                                   /* set only once Firebase confirms who you are */
+const saveName = () => LS.set("me", {id:null, name:ME.name});
 
 /* ============================================================
    STORE — one surface, three backends:
@@ -550,7 +562,7 @@ const S = {
   league:null, teams:[], draft:null, stats:{}, trades:[], activity:[],
   err:null, statRound:1, viewRound:1, statOnlyRostered:true,
   playerFilter:{q:"", club:"", pos:"", avail:"all", sort:"fpts"},
-  modal:null, noStore:false
+  modal:null, noStore:false, user:null, authReady:false, authErr:null, signingIn:false
 };
 const myTeam = () => S.teams.find(t=>t.ownerId===ME.id) || null;
 const isCommish = () => !!S.league && S.league.commissionerId === ME.id;
@@ -682,6 +694,7 @@ function subscribe(id){
    ACTIONS
    ============================================================ */
 async function createLeague(o){
+  if(!ME.id){ toast("Sign in before creating a league.","bad"); return null; }
   const id = code6();
   const teams = [];
   for(let i=0;i<o.teamCount;i++){
@@ -702,6 +715,7 @@ async function createLeague(o){
   return id;
 }
 async function joinLeague(codeIn){
+  if(!ME.id){ S.err="Sign in before joining a league."; render(); return; }
   const id = String(codeIn||"").trim().toUpperCase();
   if(!/^[A-Z0-9]{6}$/.test(id)){ S.err="League codes are six characters, like 7K2M9Q."; render(); return; }
   const snap = await store.doc(pathL(id)).get();
@@ -709,6 +723,7 @@ async function joinLeague(codeIn){
   S.leagueId=id; LS.set("league", id); S.err=null; S.view="home"; subscribe(id); render();
 }
 async function claimTeam(teamId, teamName){
+  if(!ME.id){ toast("Sign in before claiming a squad.","bad"); return; }
   const t = teamById(teamId); if(!t) return;
   if(myTeam() && myTeam().id !== teamId){ toast("You already manage a squad in this league.","bad"); return; }
   const meId = ME.id, nm = ME.name||"Manager";
@@ -923,7 +938,7 @@ function setupDiagnosis(){
             body:"The apiKey in index.html isn\u2019t a valid key for this project. Copy the whole firebaseConfig block again from the Firebase console \u2014 gear icon \u203a Project settings \u203a Your apps \u2014 and make sure you\u2019re copying your own values, not an example."};
   if(d.code==="permission-denied")
     return {head:"Firestore refused the request",
-            body:"The database is reachable but the rules rejected it. Enable Anonymous sign-in (Authentication \u203a Sign-in method) and publish the contents of firestore.rules under Firestore Database \u203a Rules."};
+            body:"The database is reachable but the rules rejected it. Publish the contents of firestore.rules under Firestore Database \u203a Rules, and make sure Google is enabled under Authentication \u203a Sign-in method."};
   return {head:"Couldn\u2019t reach your Firestore database",
           body:"Error code: "+(d.code||"unknown")+". The usual causes are a wrong projectId, or the Firestore database not having been created yet (Firestore Database \u203a Create database)."};
 }
@@ -931,11 +946,11 @@ function setupDiagnosis(){
 function renderLanding(){
   const counts = CLUBS.map(c=>({c, n:PLAYERS.filter(p=>p.club===c.id).length}));
   const diag = setupDiagnosis();
-  const modeNote = BACKEND==="firebase"
-    ? '<span class="pill win"><span class="dot"></span>Shared league database connected</span>'
-    : BACKEND==="claude"
-      ? '<span class="pill win"><span class="dot"></span>Connected</span>'
-      : '<span class="pill loss"><span class="dot"></span>Not connected — local only</span>';
+  const modeNote = BACKEND==="memory"
+    ? '<span class="pill loss"><span class="dot"></span>Not connected — local only</span>'
+    : S.user
+      ? '<span class="pill win"><span class="dot"></span>Signed in as '+esc(S.user.name)+'</span><button class="btn sm gh" data-act="signout">Sign out</button>'
+      : '<span class="pill"><span class="dot"></span>Not signed in</span>';
   return '<div class="land">'+
     '<div class="row" style="gap:9px;margin-bottom:26px"><span class="ball"></span>'+
       '<div><div style="font-family:var(--f-disp);font-size:21px;text-transform:uppercase;letter-spacing:.03em;line-height:1">Hoop Ladder</div>'+
@@ -950,13 +965,22 @@ function renderLanding(){
         counts.map(x=>'<div class="sc-row">'+stripe(x.c.id)+'<span class="nm">'+esc(x.c.name)+'</span><span class="pmeta">'+x.c.id+'</span><span class="num">'+x.n+'</span></div>').join("")+
       '</div>'+
     '</div>'+
-    '<div class="opts">'+
-      '<div class="opt"><h3>Start a league</h3><p>You become commissioner: squad size, scoring, draft order. You get a six-character code to send your mates.</p>'+
-      '<button class="btn pri" data-act="new-league"'+(S.noStore?' disabled':'')+'>Create league</button></div>'+
-      '<div class="opt"><h3>Join with a code</h3><p>Got a code from your commissioner? Drop it in and claim one of the open squad slots.</p>'+
-        '<div class="row"><input class="inp" id="joincode" data-fk="joincode" placeholder="e.g. 7K2M9Q" maxlength="6" style="text-transform:uppercase;font-family:var(--f-mono);letter-spacing:.12em">'+
-        '<button class="btn" data-act="join"'+(S.noStore?' disabled':'')+'>Join</button></div></div>'+
-    '</div>'+
+    (!S.authReady && !S.noStore
+      ? '<div class="opts"><div class="opt"><h3>Checking your sign-in…</h3><p class="pmeta">One moment.</p></div></div>'
+      : (!S.user && !S.noStore
+        ? '<div class="opts"><div class="opt" style="grid-column:1/-1">'+
+            '<h3>Sign in to play</h3>'+
+            '<p>Your squad is tied to your Google account, so the same squad follows you between your phone and your laptop. Your mates each sign in with theirs.</p>'+
+            '<div class="row"><button class="btn pri" data-act="signin"'+(S.signingIn?" disabled":"")+'>'+(S.signingIn?"Opening Google…":"Sign in with Google")+'</button></div>'+
+            (S.authErr?'<div class="note" style="margin-top:10px;border-color:var(--loss);background:color-mix(in srgb,var(--loss) 8%, transparent)">'+esc(S.authErr)+'</div>':'')+
+          '</div></div>'
+        : '<div class="opts">'+
+            '<div class="opt"><h3>Start a league</h3><p>You become commissioner: squad size, scoring, draft order. You get a six-character code to send your mates.</p>'+
+            '<button class="btn pri" data-act="new-league"'+(S.noStore?' disabled':'')+'>Create league</button></div>'+
+            '<div class="opt"><h3>Join with a code</h3><p>Got a code from your commissioner? Drop it in and claim one of the open squad slots.</p>'+
+              '<div class="row"><input class="inp" id="joincode" data-fk="joincode" placeholder="e.g. 7K2M9Q" maxlength="6" style="text-transform:uppercase;font-family:var(--f-mono);letter-spacing:.12em">'+
+              '<button class="btn" data-act="join"'+(S.noStore?' disabled':'')+'>Join</button></div></div>'+
+          '</div>'))+
     (diag ? '<div class="note" style="margin-top:22px;border-color:var(--loss);background:color-mix(in srgb,var(--loss) 8%, transparent)">'+
       '<b>'+esc(diag.head)+'.</b> '+esc(diag.body)+
       '<div class="pmeta" style="margin-top:8px">Until this is fixed, Create and Join stay switched off \u2014 anything you made would vanish on reload.</div></div>' : '')+
@@ -977,6 +1001,8 @@ function renderRail(){
         return '<button data-nav="'+n.id+'"'+(S.view===n.id?' aria-current="page"':'')+'><span aria-hidden="true" style="width:14px;display:inline-block;text-align:center;opacity:.7">'+n.ic+'</span>'+n.label+badge+'</button>';
       }).join("")+
     '</nav>'+
+    (S.user ? '<div class="railfoot" style="display:block;padding-bottom:4px"><div class="pmeta" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(S.user.name)+'</div>'+
+      '<button class="btn sm gh" data-act="signout" style="padding-left:0">Sign out</button></div>' : '')+
     '<div class="railfoot"><button class="btn sm gh" data-act="leave">Switch league</button>'+
       '<button class="btn sm gh" data-act="theme" title="Switch between light and dark" style="margin-left:auto">Theme</button></div>'+
   '</aside>';
@@ -1327,7 +1353,7 @@ function renderModal(){
 
   if(m.type==="newleague"){
     return wrap("Create a league",
-      '<div class="field"><label class="fl">Your name</label><input class="inp" data-fk="nl-me" id="nl-me" value="'+esc(ME.name)+'" placeholder="Kai"></div>'+
+      '<div class="field"><label class="fl">Your name</label><input class="inp" data-fk="nl-me" id="nl-me" value="'+esc(ME.name || (S.user?S.user.name:""))+'" placeholder="Kai"></div>'+
       '<div class="field"><label class="fl">League name</label><input class="inp" data-fk="nl-name" id="nl-name" placeholder="Thursday Night Hoops"></div>'+
       '<div class="field"><label class="fl">Your squad name</label><input class="inp" data-fk="nl-team" id="nl-team" placeholder="Cotton Club"></div>'+
       '<div class="row"><div class="field" style="flex:1"><label class="fl">Squads</label><select class="inp" id="nl-count">'+[4,6,8,10,12].map(n=>'<option'+(n===8?' selected':'')+'>'+n+'</option>').join("")+'</select></div>'+
@@ -1338,7 +1364,7 @@ function renderModal(){
   if(m.type==="claim"){
     const open = S.teams.filter(t=>!t.ownerId);
     return wrap("Claim a squad",
-      '<div class="field"><label class="fl">Your name</label><input class="inp" data-fk="cl-me" id="cl-me" value="'+esc(ME.name)+'" placeholder="Kai"></div>'+
+      '<div class="field"><label class="fl">Your name</label><input class="inp" data-fk="cl-me" id="cl-me" value="'+esc(ME.name || (S.user?S.user.name:""))+'" placeholder="Kai"></div>'+
       (open.length? '<div class="field"><label class="fl">Rename it (optional)</label><input class="inp" data-fk="cl-team" id="cl-team" placeholder="Leave blank to keep the slot name"></div>'+
         '<div class="field"><label class="fl">Open slots</label>'+
         open.map(t=>'<div class="slot" style="margin-bottom:6px"><div class="lbl">'+esc(t.id.replace("t",""))+'</div><div class="who"><b>'+esc(t.name)+'</b></div><button class="btn sm pri" data-act="doclaim" data-t="'+t.id+'">Take it</button></div>').join("")+'</div>'
@@ -1406,12 +1432,14 @@ function wire(){
           const next = cur==="dark" ? "light" : cur==="light" ? "dark" : (matchMedia("(prefers-color-scheme: dark)").matches?"light":"dark");
           document.documentElement.setAttribute("data-theme", next); LS.set("theme", next); break;
         }
+        case "signin": await signIn(); break;
+        case "signout": await signOutNow(); break;
         case "new-league": S.modal={type:"newleague"}; render(); break;
         case "join": await joinLeague(document.getElementById("joincode").value); break;
         case "leave": LS.del("league"); unsubAll(); S.league=null; S.leagueId=null; S.teams=[]; S.stats={}; S.draft=null; S.trades=[]; S.activity=[]; S.view="landing"; S.err=null; render(); break;
         case "claim": S.modal={type:"claim"}; render(); break;
         case "createleague": {
-          ME.name=(document.getElementById("nl-me").value||"").trim()||"Commissioner"; LS.set("me",ME);
+          ME.name=(document.getElementById("nl-me").value||"").trim()||"Commissioner"; saveName();
           const name=(document.getElementById("nl-name").value||"").trim()||"My NBL League";
           const team=(document.getElementById("nl-team").value||"").trim();
           const count=Number(document.getElementById("nl-count").value)||8;
@@ -1421,7 +1449,7 @@ function wire(){
           toast("League created. Code: "+id,"good"); break;
         }
         case "doclaim": {
-          ME.name=(document.getElementById("cl-me").value||"").trim()||"Manager"; LS.set("me",ME);
+          ME.name=(document.getElementById("cl-me").value||"").trim()||"Manager"; saveName();
           const nmEl=document.getElementById("cl-team");
           await claimTeam(tid, ((nmEl&&nmEl.value)||"").trim()); break;
         }
@@ -1434,7 +1462,7 @@ function wire(){
         case "drop": S.modal={type:"confirm", title:"Release "+P[pid].name+"?", body:"They return to the free agent pool. Points they already banked stay on your season total.", ok:"Release", act:"confirmdrop", p:pid}; render(); break;
         case "confirmdrop": { const q=S.modal.p; S.modal=null; await dropPlayer(q); break; }
         case "renameteam": S.modal={type:"rename"}; render(); break;
-        case "dorename": { const t=myTeam(); ME.name=(document.getElementById("rnm").value||"").trim()||ME.name; LS.set("me",ME);
+        case "dorename": { const t=myTeam(); ME.name=(document.getElementById("rnm").value||"").trim()||ME.name; saveName();
           await saveTeam(t,{name:(document.getElementById("rn").value||"").trim()||t.name, manager:ME.name}); S.modal=null; render(); break; }
         case "nextround": await advanceRound(); break;
         case "csv": S.modal={type:"csv"}; render(); break;
@@ -1491,6 +1519,59 @@ function wire(){
 /* ============================================================
    BOOT
    ============================================================ */
+/* ------------------------------------------------------------
+   AUTH — one Google account, recognised on every device.
+   ------------------------------------------------------------ */
+async function applyAuth(u){
+  const wasId = ME.id;
+  if(u){
+    S.user = {uid:u.uid, name: u.displayName || u.email || "Manager", email: u.email || "", photo: u.photoURL || ""};
+    ME.id = u.uid;
+    if(!ME.name) ME.name = S.user.name;
+    LS.set("me", {id:null, name:ME.name});     /* cache the name only, never the id */
+  } else {
+    S.user = null; ME.id = null;
+  }
+  if(wasId === ME.id) return;                  /* nothing actually changed */
+  unsubAll();
+  S.league=null; S.teams=[]; S.draft=null; S.stats={}; S.trades=[]; S.activity=[];
+  if(S.user) await openSavedLeague(); else { S.view="landing"; }
+  render();
+}
+async function signIn(){
+  if(!FB || !FB.api) return;
+  S.signingIn = true; S.authErr = null; render();
+  try{
+    await FB.api.signIn();
+    S.authErr = null;
+  }catch(e){
+    const c = (e && e.code) || "";
+    S.authErr =
+      c.indexOf("unauthorized-domain")>=0 ? "This site's address isn't on your Firebase project's authorised list. In the Firebase console: Authentication → Settings → Authorized domains → Add domain → ksummer01.github.io" :
+      c.indexOf("popup-blocked")>=0        ? "Your browser blocked the sign-in popup. Allow popups for this site and try again." :
+      c.indexOf("popup-closed")>=0 || c.indexOf("cancelled-popup")>=0 ? "Sign-in was cancelled." :
+      c.indexOf("operation-not-allowed")>=0 ? "Google sign-in isn't switched on for this Firebase project yet. Console → Authentication → Sign-in method → Google → Enable." :
+      "Sign-in failed" + (c ? " ("+c+")" : "") + ".";
+  }
+  S.signingIn = false; render();
+}
+async function signOutNow(){
+  if(!FB || !FB.api) return;
+  try{ await FB.api.signOut(); }catch(e){ toast("Couldn't sign out: "+((e&&e.code)||"error"),"bad"); }
+}
+async function openSavedLeague(){
+  if(!S.leagueId) return;
+  try{
+    const snap = await store.doc(pathL(S.leagueId)).get();
+    if(snap.exists){ subscribe(S.leagueId); S.view = "home"; }
+    else { LS.del("league"); S.leagueId=null; }
+  }catch(e){
+    console.error(e);
+    S.err = "Couldn't reach the league database: "+(e.message||e.code||"unknown error");
+    S.leagueId = null;
+  }
+}
+
 async function boot(){
   const th = LS.get("theme", null);
   if(th) document.documentElement.setAttribute("data-theme", th);
@@ -1499,34 +1580,50 @@ async function boot(){
   /* pick a backend */
   let fb = null;
   try{ fb = window.__fbReady ? await window.__fbReady : null; }catch(e){ console.warn(e); }
-  if(fb && fb.db){ FB = fb; BACKEND = "firebase"; S.authError = fb.authError || null; }
+  if(fb && fb.db){ FB = fb; BACKEND = "firebase"; }
   else if(fb && fb.error){ S.setup = fb; }
 
   if(BACKEND!=="firebase" && typeof window.claude!=="undefined" && window.claude.use){
     try{ const d = await window.claude.use("db"); if(d){ CDB = d; BACKEND = "claude"; } }catch(e){}
   }
+  S.noStore = (BACKEND==="memory");
+  if(S.noStore){ S.leagueId = null; render(); return; }
 
-  /* Starting the SDK proves nothing - it succeeds even with a bad key.
-     Do one real read before claiming the database is connected. */
   if(BACKEND==="firebase"){
     render();
-    const probe = await Promise.race([
-      store.doc("leagues/__connection_probe").get().then(()=>({ok:true}), e=>({ok:false, code:(e&&e.code)||"error"})),
-      sleep(10000).then(()=>({ok:false, code:"timeout"}))
-    ]);
-    if(!probe.ok){
-      BACKEND = "memory"; FB = null;
-      S.setup = {error:"unreachable", code:probe.code, authError:S.authError};
+    /* wait for Firebase to say whether a session already exists on this device */
+    await new Promise(resolve=>{
+      let first = true;
+      FB.api.onChange(async (u)=>{
+        if(first){
+          first = false;
+          S.user = u ? {uid:u.uid, name:u.displayName||u.email||"Manager", email:u.email||"", photo:u.photoURL||""} : null;
+          if(u){ ME.id = u.uid; if(!ME.name) ME.name = S.user.name; LS.set("me",{id:null,name:ME.name}); }
+          S.authReady = true;
+          resolve();
+        } else {
+          await applyAuth(u);                  /* later sign-in / sign-out */
+        }
+      });
+      setTimeout(()=>{ if(first){ first=false; S.authReady=true; resolve(); } }, 10000);
+    });
+
+    /* Only probe once signed in — the rules require an authenticated request. */
+    if(S.user){
+      const probe = await Promise.race([
+        store.doc("leagues/__connection_probe").get().then(()=>({ok:true}), e=>({ok:false, code:(e&&e.code)||"error"})),
+        sleep(10000).then(()=>({ok:false, code:"timeout"}))
+      ]);
+      if(!probe.ok){
+        BACKEND = "memory"; FB = null; S.noStore = true;
+        S.setup = {error:"unreachable", code:probe.code};
+        S.leagueId = null; render(); return;
+      }
+      await openSavedLeague();
     }
-  }
-  S.noStore = (BACKEND==="memory");
-  if(S.noStore){ S.leagueId = null; }
-  if(S.leagueId){
-    try{
-      const snap = await store.doc(pathL(S.leagueId)).get();
-      if(snap.exists) subscribe(S.leagueId);
-      else { LS.del("league"); S.leagueId=null; }
-    }catch(e){ console.error(e); S.err="Couldn't reach the league database: "+(e.message||e.code||"unknown error"); S.leagueId=null; }
+  } else if(BACKEND==="claude"){
+    S.authReady = true;
+    await openSavedLeague();
   }
   render();
 }
