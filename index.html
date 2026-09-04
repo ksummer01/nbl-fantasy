@@ -218,6 +218,18 @@ td.num,th.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
 /* ---------- lineup ---------- */
 .lineup{display:grid;gap:6px}
 .slot{display:grid;grid-template-columns:46px 1fr auto;gap:10px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-s);padding:8px 10px}
+.lglist{display:flex;flex-direction:column;gap:8px}
+.lgitem{display:flex;flex-wrap:nowrap;align-items:stretch;gap:6px}
+.lgitem .lgrow{flex:1;min-width:0}
+.lgitem .x{flex:0 0 auto;align-self:center}
+.lgrow{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-s);padding:10px 12px;cursor:pointer;font:inherit;color:inherit}
+.lgrow:hover{border-color:var(--muted)}
+.lgrow[aria-current="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.lgrow .nm{font-weight:600;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lgrow .sub{font-size:12.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lgrow .cd{font-family:var(--f-mono);font-size:12px;color:var(--faint);letter-spacing:.1em}
+.acctbtn{display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:30px;border-radius:99px;background:var(--chip);border:1px solid var(--line);font-family:var(--f-mono);font-size:12px;font-weight:700;letter-spacing:.04em;cursor:pointer;padding:0 8px;color:var(--ink-2)}
+.acctbtn:hover{border-color:var(--muted)}
 .slot.bench{background:var(--sunken)}
 .slot.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
 .slot .lbl{font-family:var(--f-disp);font-size:15px;font-weight:700;letter-spacing:.06em;color:var(--muted);text-transform:uppercase}
@@ -636,11 +648,18 @@ const S = {
   league:null, teams:[], draft:null, stats:{}, trades:[], activity:[],
   err:null, statRound:1, viewRound:1, statOnlyRostered:true,
   playerFilter:{q:"", club:"", pos:"", avail:"all", sort:"fpts"},
-  modal:null, noStore:false, user:null, authReady:false, authErr:null, signingIn:false
+  modal:null, noStore:false, user:null, authReady:false, authErr:null, signingIn:false,
+  myLeagues:[], rulesOld:false, joinErr:null
 };
 const myTeam = () => S.teams.find(t=>t.ownerId===ME.id) || null;
 const isCommish = () => !!S.league && S.league.commissionerId === ME.id;
 const teamById = id => S.teams.find(t=>t.id===id) || null;
+function initials(){
+  const n = (S.user && S.user.name) || ME.name || "";
+  const parts = String(n).trim().split(/\s+/).filter(Boolean);
+  if(!parts.length) return "\u2630";
+  return (parts[0][0] + (parts.length>1 ? parts[parts.length-1][0] : "")).toUpperCase();
+}
 
 function toast(msg, kind){
   const el = document.createElement("div");
@@ -729,6 +748,96 @@ const pathD   = id => "leagues/"+id+"/draft/state";
 const pathS   = (id,r) => "leagues/"+id+"/stats/r"+r;
 const pathTr  = id => "leagues/"+id+"/trades";
 const pathAct = id => "leagues/"+id+"/meta/activity";
+const pathU   = uid => "users/"+uid;
+
+/* ============================================================
+   YOUR LEAGUES — the list of leagues this Google account has
+   joined, so you never have to type a code twice. Kept in the
+   user's own Firestore document so it follows you between
+   devices, and mirrored to localStorage so it still works if
+   the /users rule hasn't been published yet.
+   ============================================================ */
+let USERDOC = true;                 /* false once Firestore refuses /users */
+
+function mergeLeagues(a, b){
+  const out = {};
+  (a||[]).concat(b||[]).forEach(e=>{
+    if(!e || !e.id) return;
+    const cur = out[e.id];
+    if(!cur || (e.at||0) > (cur.at||0)) out[e.id] = {id:e.id, name:e.name||e.id, team:e.team||"", at:e.at||0};
+  });
+  return Object.values(out).sort((x,y)=>(y.at||0)-(x.at||0)).slice(0,24);
+}
+async function pushMyLeagues(){
+  LS.set("leagues", S.myLeagues);
+  if(!ME.id || BACKEND!=="firebase" || !USERDOC) return;
+  try{ await store.doc(pathU(ME.id)).set({leagues:clone(S.myLeagues), updated:Date.now()}); }
+  catch(e){ if(((e&&e.code)||"")==="permission-denied"){ USERDOC=false; S.rulesOld=true; render(); } }
+}
+async function loadMyLeagues(){
+  const local = LS.get("leagues", []);
+  S.myLeagues = Array.isArray(local) ? local : [];
+  if(!ME.id || BACKEND!=="firebase"){ render(); return; }
+  try{
+    const snap = await store.doc(pathU(ME.id)).get();
+    const remote = snap.exists && Array.isArray(snap.data().leagues) ? snap.data().leagues : [];
+    S.myLeagues = mergeLeagues(S.myLeagues, remote);
+    USERDOC = true;
+    if(remote.length !== S.myLeagues.length) await pushMyLeagues(); else LS.set("leagues", S.myLeagues);
+  }catch(e){
+    if(((e&&e.code)||"")==="permission-denied"){ USERDOC=false; S.rulesOld=true; }
+  }
+  render();
+}
+/* bump=true moves it to the top of the list (you just opened it) */
+async function rememberLeague(id, name, team, bump){
+  if(!id || !ME.id) return;
+  const list = (S.myLeagues||[]).slice();
+  const i = list.findIndex(x=>x && x.id===id);
+  const old = i>=0 ? list[i] : null;
+  const ent = { id,
+    name: name || (old&&old.name) || id,
+    team: (team!=null && team!=="") ? team : ((old&&old.team)||""),
+    at:   bump ? Date.now() : ((old&&old.at)||Date.now()) };
+  if(old && old.name===ent.name && old.team===ent.team && old.at===ent.at) return;
+  if(i>=0) list.splice(i,1);
+  list.push(ent);
+  S.myLeagues = mergeLeagues(list, []);
+  await pushMyLeagues();
+  render();
+}
+async function forgetLeague(id){
+  S.myLeagues = (S.myLeagues||[]).filter(x=>x && x.id!==id);
+  await pushMyLeagues();
+  render();
+}
+/* keep the saved entry's league name and squad name current */
+function syncLeagueEntry(){
+  if(!S.leagueId || !S.league || !ME.id) return;
+  const t = myTeam();
+  rememberLeague(S.leagueId, S.league.name, t?t.name:null, false).catch(()=>{});
+}
+async function openLeague(id){
+  S.modal = null;
+  if(id === S.leagueId && S.league){ render(); return; }
+  unsubAll();
+  S.league=null; S.teams=[]; S.draft=null; S.stats={}; S.trades=[]; S.activity=[]; S.err=null;
+  S.leagueId = id; LS.set("league", id);
+  render();
+  try{
+    const snap = await store.doc(pathL(id)).get();
+    if(!snap.exists){
+      S.err = "League "+id+" no longer exists, so I have taken it off your list.";
+      await forgetLeague(id);
+      S.leagueId=null; LS.del("league"); S.view="landing"; render(); return;
+    }
+    await rememberLeague(id, snap.data().name, null, true);
+    S.view = "home"; subscribe(id); render();
+  }catch(e){
+    S.err = "Couldn\u2019t open that league: " + ((e&&e.code) || e.message || "unknown error");
+    S.leagueId = null; render();
+  }
+}
 
 async function saveLeague(patch){
   Object.assign(S.league, patch); S.league.updatedAt = Date.now();
@@ -753,9 +862,9 @@ function subscribe(id){
   const onErr = e => { S.err = "Live sync stopped ("+(e.code||"error")+"). Reload the page to reconnect."; render(); };
   listeners.push(store.doc(pathL(id)).onSnapshot(s=>{
     if(!s.exists){ S.err="That league code no longer exists."; S.league=null; S.leagueId=null; LS.del("league"); S.view="landing"; render(); return; }
-    S.league = s.data(); render();
+    S.league = s.data(); syncLeagueEntry(); render();
   }, onErr));
-  listeners.push(store.col(pathT(id)).onSnapshot(s=>{ S.teams = s.docs.map(d=>Object.assign({id:d.id}, d.data())); render(); }, onErr));
+  listeners.push(store.col(pathT(id)).onSnapshot(s=>{ S.teams = s.docs.map(d=>Object.assign({id:d.id}, d.data())); syncLeagueEntry(); render(); }, onErr));
   listeners.push(store.doc(pathD(id)).onSnapshot(s=>{ S.draft = s.exists ? s.data() : null; render(); }, onErr));
   listeners.push(store.col(pathTr(id)).onSnapshot(s=>{ S.trades = s.docs.map(d=>Object.assign({id:d.id}, d.data())); render(); }, onErr));
   listeners.push(store.doc(pathAct(id)).onSnapshot(s=>{ S.activity = s.exists ? (s.data().items||[]) : []; render(); }, onErr));
@@ -785,6 +894,7 @@ async function createLeague(o){
   for(const t of teams) await store.doc(pathT(id)+"/"+t.id).set(clone(t));
   await store.doc(pathD(id)).set({started:false, order:[], picks:[], rounds:o.rosterSize});
   await store.doc(pathAct(id)).set({items:[{t:Date.now(), by:ME.name||"Commissioner", text:"created the league"}]});
+  await rememberLeague(id, league.name, teams[0].name, true);
   S.view="home"; S.err=null; subscribe(id); render();
   return id;
 }
@@ -794,7 +904,9 @@ async function joinLeague(codeIn){
   if(!/^[A-Z0-9]{6}$/.test(id)){ S.err="League codes are six characters, like 7K2M9Q."; render(); return; }
   const snap = await store.doc(pathL(id)).get();
   if(!snap.exists){ S.err="No league found with code "+id+". Check it with your commissioner."; render(); return; }
-  S.leagueId=id; LS.set("league", id); S.err=null; S.view="home"; subscribe(id); render();
+  S.leagueId=id; LS.set("league", id); S.err=null; S.view="home";
+  await rememberLeague(id, snap.data().name, null, true);
+  subscribe(id); render();
 }
 async function claimTeam(teamId, teamName){
   if(!ME.id){ toast("Sign in before claiming a squad.","bad"); return; }
@@ -1017,6 +1129,21 @@ function setupDiagnosis(){
           body:"Error code: "+(d.code||"unknown")+". The usual causes are a wrong projectId, or the Firestore database not having been created yet (Firestore Database \u203a Create database)."};
 }
 
+function renderMyLeagues(){
+  if(!S.user || !S.myLeagues || !S.myLeagues.length) return "";
+  return '<div class="opt" style="margin-bottom:20px"><h3>Your leagues</h3>'+
+    '<p class="pmeta" style="margin:0">Saved to your Google account, so they are here on your phone as well. No code needed.</p>'+
+    '<div class="lglist">'+ S.myLeagues.map(l=>
+      '<div class="lgitem">'+
+        '<button class="lgrow" data-act="openlg" data-lg="'+esc(l.id)+'"'+(l.id===S.leagueId?' aria-current="true"':'')+'>'+
+          '<span style="flex:1;min-width:0"><span class="nm" style="display:block">'+esc(l.name||l.id)+'</span>'+
+          '<span class="sub">'+(l.team?esc(l.team):'<em>no squad claimed yet</em>')+'</span></span>'+
+          '<span class="cd">'+esc(l.id)+'</span></button>'+
+        '<button class="btn sm gh x" data-act="forgetlg" data-lg="'+esc(l.id)+'" title="Remove from this list" aria-label="Remove '+esc(l.name||l.id)+' from your list">\u2715</button>'+
+      '</div>').join("")+'</div>'+
+    (S.rulesOld?'<div class="pmeta" style="margin-top:4px">This list is saved on this device only. To have it follow you between devices, republish firestore.rules \u2014 it now needs a /users block.</div>':'')+
+  '</div>';
+}
 function renderLanding(){
   const counts = CLUBS.map(c=>({c, n:PLAYERS.filter(p=>p.club===c.id).length}));
   const diag = setupDiagnosis();
@@ -1030,6 +1157,7 @@ function renderLanding(){
       '<div><div style="font-family:var(--f-disp);font-size:21px;text-transform:uppercase;letter-spacing:.03em;line-height:1">Hoop Ladder</div>'+
       '<div class="eyebrow">'+SEASON+' Fantasy · Australian NBL</div></div>'+
       '<span class="spacer"></span>'+modeNote+'</div>'+
+    renderMyLeagues()+
     '<div class="hero">'+
       '<div><h2>Draft the <em>NBL</em>.<br>Rack up the points.</h2>'+
       '<p>Season-long total points, not weekly matchups. Draft a squad from the ten NBL clubs, and every player you own scores for you every round, all 21 rounds. Sign free agents, trade, and the ladder is simply who has banked the most.</p>'+
@@ -1049,7 +1177,7 @@ function renderLanding(){
             (S.authErr?'<div class="note" style="margin-top:10px;border-color:var(--loss);background:color-mix(in srgb,var(--loss) 8%, transparent)">'+esc(S.authErr)+'</div>':'')+
           '</div></div>'
         : '<div class="opts">'+
-            '<div class="opt"><h3>Start a league</h3><p>You become commissioner: squad size, scoring, draft order. You get a six-character code to send your mates.</p>'+
+            '<div class="opt"><h3>'+(S.myLeagues && S.myLeagues.length ? 'Start another league' : 'Start a league')+'</h3><p>You become commissioner: squad size, scoring, draft order. You get a six-character code to send your mates.</p>'+
             '<button class="btn pri" data-act="new-league"'+(S.noStore?' disabled':'')+'>Create league</button></div>'+
             '<div class="opt"><h3>Join with a code</h3><p>Got a code from your commissioner? Drop it in and claim one of the open squad slots.</p>'+
               '<div class="row"><input class="inp" id="joincode" data-fk="joincode" placeholder="e.g. 7K2M9Q" maxlength="6" style="text-transform:uppercase;font-family:var(--f-mono);letter-spacing:.12em">'+
@@ -1092,6 +1220,7 @@ function renderTop(){
     '<span class="spacer"></span>'+
     (t ? '<span class="pmeta">'+esc(t.name)+'</span><span class="pill acc">'+(row?"#"+row.rank+" · "+row.total.toFixed(1)+" FP":"—")+'</span>'
        : '<button class="btn sm pri" data-act="claim">Claim a squad</button>')+
+    '<button class="acctbtn" data-act="acct" title="Your leagues, theme and sign out" aria-label="Account menu">'+esc(initials())+'</button>'+
   '</div>';
 }
 function renderTabbar(){
@@ -1442,6 +1571,37 @@ function renderModal(){
       '<p class="pmeta">Every player on a squad scores every round — there is no bench and no lineup to set.</p>',
       '<button class="btn" data-act="closemodal">Cancel</button><button class="btn pri" data-act="createleague">Create</button>');
   }
+  if(m.type==="acct"){
+    const others = (S.myLeagues||[]);
+    return wrap("Your account",
+      (S.user
+        ? '<div class="slot" style="grid-template-columns:1fr auto;margin-bottom:14px"><div><b>'+esc(S.user.name)+'</b>'+
+            (S.user.email?'<div class="pmeta">'+esc(S.user.email)+'</div>':'')+'</div>'+
+          '<button class="btn sm dan" data-act="signout">Sign out</button></div>'
+        : '<div class="note" style="margin-bottom:14px">Not signed in.</div>')+
+      '<div class="fl" style="margin-bottom:6px">Your leagues</div>'+
+      (others.length
+        ? '<div class="lglist">'+others.map(l=>
+            '<div class="lgitem">'+
+              '<button class="lgrow" data-act="openlg" data-lg="'+esc(l.id)+'"'+(l.id===S.leagueId?' aria-current="true"':'')+'>'+
+                '<span style="flex:1;min-width:0"><span class="nm" style="display:block">'+esc(l.name||l.id)+'</span>'+
+                '<span class="sub">'+(l.team?esc(l.team):'<em>no squad claimed yet</em>')+'</span></span>'+
+                '<span class="cd">'+esc(l.id)+'</span></button>'+
+              '<button class="btn sm gh x" data-act="forgetlg" data-lg="'+esc(l.id)+'" aria-label="Remove from list">\u2715</button>'+
+            '</div>').join("")+'</div>'
+        : '<p class="pmeta" style="margin-top:0">Nothing saved yet.</p>')+
+      (S.rulesOld?'<div class="pmeta" style="margin-top:8px">Saved on this device only \u2014 republish firestore.rules to have this list follow you between devices.</div>':'')+
+      '<div class="field" style="margin-top:16px"><label class="fl">Join another league</label>'+
+        '<div class="row"><input class="inp mono" id="acctcode" data-fk="acctcode" placeholder="e.g. 7K2M9Q" maxlength="6" style="text-transform:uppercase;letter-spacing:.12em">'+
+        '<button class="btn" data-act="joinmore">Join</button></div>'+
+        (S.joinErr?'<div class="pmeta" style="color:var(--loss);margin-top:6px">'+esc(S.joinErr)+'</div>':'')+'</div>'+
+      '<div class="row" style="margin-top:16px;gap:8px">'+
+        '<button class="btn sm gh" data-act="new-league" style="padding-left:0">Create a new league</button>'+
+        '<span class="spacer"></span>'+
+        '<button class="btn sm gh" data-act="theme">Theme</button></div>',
+      (S.league?'<button class="btn" data-act="leave">Back to all leagues</button>':'')+
+      '<button class="btn" data-act="closemodal">Close</button>');
+  }
   if(m.type==="claim"){
     const open = S.teams.filter(t=>!t.ownerId);
     return wrap("Claim a squad",
@@ -1511,13 +1671,38 @@ function wire(){
         case "theme": {
           const cur = document.documentElement.getAttribute("data-theme");
           const next = cur==="dark" ? "light" : cur==="light" ? "dark" : (matchMedia("(prefers-color-scheme: dark)").matches?"light":"dark");
-          document.documentElement.setAttribute("data-theme", next); LS.set("theme", next); break;
+          document.documentElement.setAttribute("data-theme", next); LS.set("theme", next); render(); break;
         }
         case "signin": await signIn(); break;
         case "signout": await signOutNow(); break;
         case "new-league": S.modal={type:"newleague"}; render(); break;
         case "join": await joinLeague(document.getElementById("joincode").value); break;
-        case "leave": LS.del("league"); unsubAll(); S.league=null; S.leagueId=null; S.teams=[]; S.stats={}; S.draft=null; S.trades=[]; S.activity=[]; S.view="landing"; S.err=null; render(); break;
+        case "acct": S.modal={type:"acct"}; S.joinErr=null; render(); break;
+        case "openlg": await openLeague(el.dataset.lg); break;
+        case "forgetlg": {
+          const id = el.dataset.lg;
+          await forgetLeague(id);
+          if(id === S.leagueId){
+            LS.del("league"); unsubAll();
+            S.league=null; S.leagueId=null; S.teams=[]; S.stats={}; S.draft=null; S.trades=[]; S.activity=[];
+            S.view="landing"; S.modal=null;
+          }
+          render(); break;
+        }
+        case "joinmore": {
+          const c = (document.getElementById("acctcode").value||"").trim().toUpperCase();
+          S.joinErr = null;
+          if(!/^[A-Z0-9]{6}$/.test(c)){ S.joinErr="League codes are six characters, like 7K2M9Q."; render(); break; }
+          if((S.myLeagues||[]).some(x=>x.id===c)){ await openLeague(c); break; }
+          let snap = null;
+          try{ snap = await store.doc(pathL(c)).get(); }
+          catch(err){ S.joinErr="Couldn\u2019t reach the database ("+((err&&err.code)||"error")+")."; render(); break; }
+          if(!snap.exists){ S.joinErr="No league found with code "+c+"."; render(); break; }
+          await rememberLeague(c, snap.data().name, null, true);
+          await openLeague(c);
+          break;
+        }
+        case "leave": S.modal=null; LS.del("league"); unsubAll(); S.league=null; S.leagueId=null; S.teams=[]; S.stats={}; S.draft=null; S.trades=[]; S.activity=[]; S.view="landing"; S.err=null; render(); break;
         case "claim": S.modal={type:"claim"}; render(); break;
         case "createleague": {
           ME.name=(document.getElementById("nl-me").value||"").trim()||"Commissioner"; saveName();
@@ -1616,7 +1801,9 @@ async function applyAuth(u){
   if(wasId === ME.id) return;                  /* nothing actually changed */
   unsubAll();
   S.league=null; S.teams=[]; S.draft=null; S.stats={}; S.trades=[]; S.activity=[];
-  if(S.user) await openSavedLeague(); else { S.view="landing"; }
+  S.modal=null;
+  if(S.user){ await loadMyLeagues(); await openSavedLeague(); }
+  else { S.myLeagues=[]; S.view="landing"; }
   render();
 }
 async function signIn(){
@@ -1641,11 +1828,18 @@ async function signOutNow(){
   try{ await FB.api.signOut(); }catch(e){ toast("Couldn't sign out: "+((e&&e.code)||"error"),"bad"); }
 }
 async function openSavedLeague(){
+  /* nothing pinned on this device? fall back to the most recent league on
+     your account, which is what makes a fresh phone land somewhere useful */
+  if(!S.leagueId && S.myLeagues && S.myLeagues.length) S.leagueId = S.myLeagues[0].id;
   if(!S.leagueId) return;
   try{
     const snap = await store.doc(pathL(S.leagueId)).get();
-    if(snap.exists){ subscribe(S.leagueId); S.view = "home"; }
-    else { LS.del("league"); S.leagueId=null; }
+    if(snap.exists){
+      LS.set("league", S.leagueId);
+      await rememberLeague(S.leagueId, snap.data().name, null, false);
+      subscribe(S.leagueId); S.view = "home";
+    }
+    else { LS.del("league"); await forgetLeague(S.leagueId); S.leagueId=null; }
   }catch(e){
     console.error(e);
     S.err = "Couldn't reach the league database: "+(e.message||e.code||"unknown error");
@@ -1700,10 +1894,12 @@ async function boot(){
         S.setup = {error:"unreachable", code:probe.code};
         S.leagueId = null; render(); return;
       }
+      await loadMyLeagues();
       await openSavedLeague();
     }
   } else if(BACKEND==="claude"){
     S.authReady = true;
+    await loadMyLeagues();
     await openSavedLeague();
   }
   render();
